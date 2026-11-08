@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>간조스캔 · 드론 시점 황백화 판독·살포 시뮬레이터</title>
+<style>
+  :root{
+    --bg:#0b0f14; --panel:rgba(8,12,18,.72); --line:rgba(255,255,255,.12);
+    --ink:#e6edf3; --ink2:#9fb0c0; --ink3:#6b7a89;
+    --ok:#3fb950; --warn:#e3b341; --bad:#f85149; --etc:#58a6ff; --cyan:#39d0d8; --accent:#58a6ff; --orange:#ff9f43;
+    --mono:"Consolas","D2Coding","Cascadia Mono",monospace;
+    --sans:"Pretendard","Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden}
+  #app{position:fixed;inset:0;overflow:hidden}
+  #ui{position:absolute;left:0;top:0;width:100%;height:100%;transform-origin:0 0;z-index:3}
+  canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #top{position:absolute;left:0;right:0;top:0;height:46px;display:flex;align-items:center;gap:10px;padding:0 14px;
+       background:linear-gradient(180deg,rgba(5,8,12,.85),rgba(5,8,12,.35));border-bottom:1px solid var(--line);z-index:5}
+  #top .brand{font-weight:800;letter-spacing:.5px;font-size:15px}
+  #top .brand small{font-weight:500;color:var(--ink2);margin-left:6px;font-size:12px}
+  #top .sp{flex:1}
+  .btn{appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--ink);padding:6px 11px;border-radius:7px;font-family:var(--sans);font-size:12.5px;cursor:pointer;transition:background .15s}
+  .btn:hover{background:rgba(255,255,255,.12)}
+  .btn.primary{background:var(--accent);border-color:transparent;color:#06101c;font-weight:700}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+  .seg button{appearance:none;border:0;background:transparent;color:var(--ink2);padding:6px 9px;font-size:12px;cursor:pointer;font-family:var(--sans)}
+  .seg button.on{background:rgba(88,166,255,.25);color:#fff}
+  .ctl{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink2)}
+  .ctl input[type=range]{width:90px;accent-color:var(--warn)}
+  .ctl b{color:var(--ink);font-family:var(--mono)}
+  .hud{position:absolute;z-index:3;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;backdrop-filter:blur(6px);font-size:12px;line-height:1.45}
+  .hud h4{margin:0 0 6px;font-size:11px;letter-spacing:1.2px;color:var(--ink3);font-weight:700;text-transform:uppercase}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px}
+  .kv span{color:var(--ink2)}
+  .kv b{font-family:var(--mono);font-weight:600;text-align:right;color:var(--ink)}
+  #flight{left:14px;top:60px;width:236px}
+  #read{right:14px;top:244px;width:256px}
+  #memory{left:14px;bottom:56px;width:300px;max-height:34vh;overflow:auto}
+  #minimapWrap{right:14px;top:60px;width:256px;padding:8px}
+  #minimap{display:block;width:100%;height:150px}
+  #log{left:0;right:0;bottom:0;height:46px;border-radius:0;border-left:0;border-right:0;border-bottom:0;padding:6px 14px;font-family:var(--mono);font-size:11.5px;color:var(--ink2);display:flex;align-items:center;gap:18px;white-space:nowrap;overflow:hidden}
+  #log .t{color:var(--ink3)}
+  .pill{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.3px}
+  .pill.ok{background:rgba(63,185,80,.18);color:var(--ok)} .pill.warn{background:rgba(227,179,65,.2);color:var(--warn)}
+  .pill.bad{background:rgba(248,81,73,.2);color:var(--bad)} .pill.etc{background:rgba(88,166,255,.2);color:var(--etc)}
+  .pill.cyan{background:rgba(57,208,216,.18);color:var(--cyan)} .pill.orange{background:rgba(255,159,67,.2);color:var(--orange)}
+  .pct{font-family:var(--mono);font-size:30px;font-weight:700;line-height:1;margin:4px 0 2px}
+  .bar{height:6px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:4px;background:var(--warn)}
+  .memitem{display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:6px 0;border-top:1px dashed var(--line)}
+  .memitem:first-of-type{border-top:0}
+  .memitem .where{font-weight:700}
+  .memitem .hist{font-family:var(--mono);color:var(--ink2);font-size:11px;grid-column:1/-1}
+  .memitem .note{color:var(--cyan);font-size:11px;grid-column:1/-1}
+  #progress{position:absolute;left:50%;top:52px;transform:translateX(-50%);z-index:3;width:min(560px,46vw);text-align:center;font-size:12px;color:var(--ink2);background:rgba(8,12,18,.6);border:1px solid var(--line);border-radius:8px;padding:5px 12px 7px;backdrop-filter:blur(6px)}
+  #progress .bar{margin-top:5px;height:4px} #progress .bar i{background:var(--accent)} #progress b{color:var(--ink);font-family:var(--mono)}
+  #toast{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);z-index:4;background:rgba(5,8,12,.8);border:1px solid var(--line);border-radius:12px;padding:18px 26px;text-align:center;font-size:15px;display:none;backdrop-filter:blur(8px)}
+  #toast small{display:block;color:var(--ink2);font-size:12px;margin-top:6px}
+  #modal{position:absolute;inset:0;z-index:20;background:rgba(3,6,10,.78);display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
+  #modal.show{display:flex}
+  .sheet{width:min(1040px,94vw);max-height:92vh;overflow:auto;background:#0f141b;border:1px solid var(--line);border-radius:14px;padding:22px 26px;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+  .sheet h2{margin:0 0 2px;font-size:20px} .sheet .sub{color:var(--ink2);font-size:13px;margin-bottom:14px}
+  .tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:12px 0 16px}
+  .tile{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .tile span{display:block;color:var(--ink2);font-size:11.5px} .tile b{display:block;font-family:var(--mono);font-size:22px;margin-top:3px} .tile small{color:var(--ink3);font-size:11px}
+  table.brief{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.brief th{font-weight:600;color:var(--ink2);text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);font-size:11.5px}
+  table.brief td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:top}
+  table.brief td.num{font-family:var(--mono);text-align:right;white-space:nowrap}
+  .up{color:var(--ok)} .down{color:var(--bad)} .flat{color:var(--ink3)}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+  .box{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .box h5{margin:0 0 8px;font-size:12px;color:var(--ink2);letter-spacing:.6px} .box ul{margin:0;padding-left:16px;font-size:12.5px;line-height:1.6} .box canvas{width:100%;height:120px;display:block}
+  pre#smsText{white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;line-height:1.55;margin:0;color:var(--ink)}
+  .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;align-items:center} .actions .sp{flex:1;color:var(--ink3);font-size:12px}
+  .daysel{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px} .daysel button{font-size:11.5px;padding:4px 9px} .daysel button.on{background:rgba(88,166,255,.25);color:#fff}
+  .bigs{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0 14px}
+  .big{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+  .big b{font-family:var(--mono);font-size:36px;line-height:1} .big span{font-size:13px;color:var(--ink2);line-height:1.35}
+  .big.warn b{color:var(--warn)} .big.cyan b{color:var(--cyan)} .big.ok b{color:var(--ok)} .big.bad b{color:var(--bad)}
+  #farmMap{width:100%;height:540px;display:block;border-radius:12px;border:1px solid var(--line)}
+  .biglegend{display:flex;gap:18px;font-size:13px;color:var(--ink);margin:10px 2px 6px;flex-wrap:wrap} .biglegend i{display:inline-block;width:14px;height:14px;border-radius:3px;margin-right:6px;vertical-align:-2px}
+  ul.plain{margin:8px 0 0;padding-left:18px;font-size:14.5px;line-height:1.75} ul.plain b{color:var(--ink)}
+  #detail{margin-top:16px;padding-top:14px;border-top:1px dashed var(--line)}
+  #intro .sheet{width:min(680px,92vw)} #intro ol{line-height:1.7;font-size:13.5px;padding-left:20px;color:var(--ink2)} #intro ol b{color:var(--ink)}
+  .legend{display:flex;gap:14px;font-size:12px;color:var(--ink2);margin-top:10px;flex-wrap:wrap} .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+  @media (max-width:1400px){ #top .brand small{display:none} #top{gap:6px} .ctl input[type=range]{width:70px} }
+  @media (max-width:1150px){ #memory{display:none} #read{width:220px} #flight{width:210px} #minimapWrap{width:220px} #progress{width:40vw} }
+  #top{flex-wrap:nowrap;overflow:hidden;white-space:nowrap}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="view"></canvas>
+  <div id="ui">
+  <div id="top">
+    <div class="brand">간조스캔 <small>드론 시점 · 선행 판독 → 정지·수직 재확인 → 살포 → 자가학습 → 브리핑</small></div>
+    <div class="sp"></div>
+    <button class="btn primary" id="btnPlay">▶ 비행 시작</button>
+    <div class="seg" id="speedSeg"><button data-s="1" class="on">1×</button><button data-s="2">2×</button><button data-s="4">4×</button><button data-s="8">8×</button></div>
+    <label class="ctl">황백화 임계값 <input type="range" id="thr" min="5" max="40" step="1" value="8"><b id="thrV">8%</b></label>
+    <label class="ctl"><input type="checkbox" id="autoNext"> 자동 다음 날</label>
+    <button class="btn" id="btnBrief" disabled>브리핑</button>
+    <button class="btn" id="btnNext" disabled>다음 날 ▸</button>
+    <button class="btn" id="btnReset">초기화</button>
+    <button class="btn" id="btnFull" title="전체화면 켜기/끄기 (F 키)">전체화면</button>
+  </div>
+  <div id="progress"><span id="progText">대기 중</span><div class="bar"><i id="progBar" style="width:0%"></i></div></div>
+
+  <div class="hud" id="flight">
+    <h4>비행 · 현장 데이터</h4>
+    <div class="kv">
+      <span>어장</span><b style="font-family:var(--sans);font-weight:600">서천 마량 지주식 3호</b>
+      <span>일자</span><b id="fDate">-</b>
+      <span>간조 · 물때</span><b id="fTide">-</b>
+      <span>조위 · 노출 잔여</span><b id="fWindow">-</b>
+      <span>비행 시각</span><b id="fClock">06:12:00</b>
+      <span>GPS (RTK)</span><b id="fGps">-</b>
+      <span>고도 AGL · 짐벌</span><b id="fAlt">5.0 m · −35°</b>
+      <span>속도</span><b id="fSpd">0.0 m/s</b>
+      <span>방위</span><b id="fHdg">000°</b>
+      <span>기상 · 시정</span><b id="fWx">-</b>
+      <span>바람 · 기온</span><b id="fWind">-</b>
+      <span>배터리</span><b id="fBat">100%</b>
+      <span>영양제 탱크</span><b id="fTank">12.0 L</b>
+    </div>
+    <div class="bar" style="margin-top:6px"><i id="tankBar" style="width:100%;background:var(--cyan)"></i></div>
+  </div>
+
+  <div class="hud" id="minimapWrap">
+    <h4>어장 지도 · 줄별 상태</h4>
+    <canvas id="minimap"></canvas>
+    <div class="legend" style="margin-top:6px;gap:9px">
+      <span><i style="background:#3fb950"></i>정상</span><span><i style="background:#e3b341"></i>황백화</span>
+      <span><i style="background:#f85149"></i>탈락</span><span><i style="background:#39d0d8"></i>기억</span><span><i style="background:#ff9f43"></i>정지 확인</span>
+    </div>
+  </div>
+
+  <div class="hud" id="read">
+    <h4>AI 판독 · 확정 구간</h4>
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <div style="font-weight:800;font-size:14px" id="rWhere">— 줄 · — 구간</div>
+      <span class="pill etc" id="rCls">대기</span>
+    </div>
+    <div class="pct" id="rPct">--<span style="font-size:14px;color:var(--ink2)"> %</span></div>
+    <div class="bar"><i id="rBar" style="width:0%"></i></div>
+    <div class="kv" style="margin-top:8px">
+      <span>B−G (보정 후)</span><b id="rBG">-</b>
+      <span>투표 프레임</span><b id="rFrames">-</b>
+      <span>신뢰도</span><b id="rConf">-</b>
+      <span>기억</span><b id="rMem">-</b>
+      <span>전일 대비</span><b id="rDelta">-</b>
+      <span>살포 결정</span><b id="rSpray">-</b>
+      <span>살포량 (학습 배율)</span><b id="rDose">-</b>
+    </div>
+    <div id="rNote" style="margin-top:6px;color:var(--cyan);font-size:11.5px;min-height:16px"></div>
+    <div style="margin-top:8px;padding-top:7px;border-top:1px dashed var(--line)">
+      <h4 style="margin-bottom:3px">선행 판독 · 7 m 앞 카메라</h4>
+      <div id="rAhead" style="font-family:var(--mono);font-size:11.5px;color:var(--ink2)">-</div>
+    </div>
+  </div>
+
+  <div class="hud" id="memory">
+    <h4>자가학습 메모리 · 추적 중인 구간 <span id="memCount" style="color:var(--cyan)"></span></h4>
+    <div id="memList"><div style="color:var(--ink3)">아직 기억된 황백화 구간이 없습니다.</div></div>
+  </div>
+  <div class="hud" id="log"><span class="t">LOG</span><span id="logLine">시스템 준비. 비행 시작을 누르세요.</span></div>
+  <div id="toast"></div>
+  </div>
+  <div id="modal"><div class="sheet" id="briefSheet"></div></div>
+
+  <div id="intro" style="position:absolute;inset:0;z-index:30;background:rgba(3,6,10,.82);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
+    <div class="sheet">
+      <h2>간조스캔 · 드론 눈과 손</h2>
+      <div class="sub">서천 마량 지주식 김 어장 · 시연 대상 2줄 × 120 m · 5 m 구간 48개 (이웃 어장은 배경) · 간조 노출 시간대 비행 · 육상 충전 허브 왕복</div>
+      <ol>
+        <li><b>선행 판독</b> — 7 m 앞을 보는 카메라가 구간마다 약 37프레임을 투표해 예비 판정합니다. 분명한 정상 구간만 속도를 유지한 채 통과합니다.</li>
+        <li><b>정지 · 수직 재확인</b> — 황백화 예비 판정, 임계값 근접, 추적 중, 역광 글레어, 프레임 부족이면 드론이 그 구간 위에 <b>정지</b>하고 카메라를 <b>수직(−88°)</b>으로 내려 30프레임을 다시 투표한 뒤 확정합니다.</li>
+        <li><b>그 자리에서 살포</b> — 확정된 구간에만, 화면에 보이는 그 그물 위에 영양제를 살포합니다. 인접한 두 구간이 모두 황백화면 두 번 정지해 각각 살포합니다.</li>
+        <li><b>놓치면 되돌아감</b> — 줄 끝에서 미판독 구간이 하나라도 있으면 되돌아가 수직 재확인합니다. 브리핑에 미판독 0을 매일 증명합니다.</li>
+        <li><b>기억 · 회복까지</b> — 살포 구간은 메모리에 남고, 다음 날 전일 대비 호전 폭으로 살포량 배율을 조정합니다. 칸 안에 조금이라도(8% 이상) 황백화가 있으면 그 칸 전체를 황백화로 봅니다. 5% 미만이면 살포 없이 관찰만 하고, 이틀 연속이면 정상 복귀로 종료합니다.</li>
+      </ol>
+      <div class="legend"><span><i style="background:#3fb950"></i>정상</span><span><i style="background:#e3b341"></i>황백화</span><span><i style="background:#f85149"></i>탈락</span><span><i style="background:#39d0d8"></i>기억 구간</span><span><i style="background:#ff9f43"></i>정지 확인</span></div>
+      <div class="actions"><span class="sp">※ 시뮬레이션입니다. 실제 어장 실측값이 아닙니다. 1× 속도로 보면 정지·수직 촬영·살포 과정이 또렷합니다. 시작하면 전체화면으로 전환됩니다 (Esc 또는 F 키로 해제).</span><button class="btn primary" id="btnIntro">비행 준비 완료 → 시작</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ============================================================
+   간조스캔 드론 시점 시뮬레이터 v2
+   비행:   허브 이륙 → 어장 → 지그재그 2줄 (배경 이웃 어장 7줄) → 허브 복귀·착륙·충전
+   판독:   선행 카메라(−35°, 7 m 앞) 30fps 투표 → 의심/추적/글레어/부족 시 정지 → 수직(−88°) 재투표 → 확정
+   살포:   확정 구간 위에서 정지 살포 (화면 중앙 그물에 미스트 + 젖음 표현)
+   커버:   줄 끝 미판독 검사 → 되돌아가 재판독
+   학습:   구간별 살포 배율을 전일 대비 호전 폭으로 조정
+   ============================================================ */
+const DECOR=7; // 배경용 이웃 어장 줄 (판독·살포 대상 아님)
+const CFG={ lines:2, segs:24, segLen:5, spacing:6, lineW:2.2, alt:5, pitchDeg:35, nadirDeg:88, speed:4, tank:12, recover:5, effPerL:16,
+            startDate:new Date(2026,11,14), tideBase:6*60+12, windowMin:75 };
+const L=CFG.segs*CFG.segLen;
+const CLS={ok:'정상',warn:'황백화',bad:'탈락',etc:'기타 이상'};
+const COLOR={ok:'#3fb950',warn:'#e3b341',bad:'#f85149',etc:'#58a6ff',cyan:'#39d0d8',orange:'#ff9f43'};
+const LAND_Z=0.5, GROUND_ALT=LAND_Z+0.75, NET_Z=0.78;
+const HUB={x:-24,y:-30,pad:4};
+const BASE_LAT=36.1328, BASE_LON=126.4962;
+
+let seedBase=20261214;
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+let rng=mulberry32(seedBase);
+const rand=(a=0,b=1)=>a+(b-a)*rng();
+const gauss=()=>{let u=0,v=0;while(!u)u=rng();while(!v)v=rng();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const key=(i,j)=>i+'-'+j;
+const pad2=n=>String(n).padStart(2,'0');
+const lineX=i=>i*CFG.spacing;
+const seglabel=(i,j)=>`${i+1}번 줄 ${j*CFG.segLen}~${(j+1)*CFG.segLen}m`;
+const rangeLabel=(j0,j1)=>`${j0*CFG.segLen}~${(j1+1)*CFG.segLen}m`;
+function median(a){ if(!a.length) return 0; const s=[...a].sort((x,y)=>x-y); const m=s.length>>1; return s.length%2?s[m]:(s[m-1]+s[m])/2; }
+function hash(n){ const x=Math.sin(n*127.1+311.7)*43758.5453; return x-Math.floor(x); }
+function noise2(x,y){ const xi=Math.floor(x), yi=Math.floor(y), fx=x-xi, fy=y-yi; const sx=fx*fx*(3-2*fx), sy=fy*fy*(3-2*fy); const h=(a,b)=>hash(a*57.3+b*131.7+7.7);
+  return (h(xi,yi)*(1-sx)+h(xi+1,yi)*sx)*(1-sy)+(h(xi,yi+1)*(1-sx)+h(xi+1,yi+1)*sx)*sy; }
+
+// ---------- 상태 ----------
+let farm, memory, day, today, days, drone, speedMul=1, running=false, threshold=8, autoNext=false, particles=[];
+
+function makeFarm(){
+  rng=mulberry32(seedBase); farm=[];
+  for(let i=0;i<CFG.lines;i++){ const segs=[]; for(let j=0;j<CFG.segs;j++) segs.push({pct:rand(0,4), resp:0.6+rand()*0.8, type:'normal'}); farm.push(segs); }
+  // 시연용 고정 구성: 줄마다 황백화 군집 ≥1 (서로 다른 위치), 경계값 2곳, 탈락 1곳 — 겹치지 않게 배치
+  const used=new Set(); const free=(i,j)=>!used.has(key(i,j))&&!used.has(key(i,j-1))&&!used.has(key(i,j+1));
+  const place=(fn)=>{ for(let t=0;t<60;t++){ if(fn()) return true; } return false; };
+  for(let i=0;i<CFG.lines;i++){ for(let c=0;c<2;c++) place(()=>{ const len=2+Math.floor(rand(0,3)), s=Math.floor(rand(1,CFG.segs-len-1)); for(let j=s;j<s+len;j++) if(!free(i,j)) return false; const base=rand(22,62); for(let j=s;j<s+len;j++){ farm[i][j].pct=clamp(base+gauss()*8,14,90); used.add(key(i,j)); } return true; }); }
+  for(let c=0;c<2;c++) place(()=>{ const i=Math.floor(rand(0,CFG.lines)), j=Math.floor(rand(0,CFG.segs)); if(!free(i,j)) return false; farm[i][j].pct=rand(9,14); used.add(key(i,j)); return true; });
+  place(()=>{ const i=Math.floor(rand(0,CFG.lines)), j=Math.floor(rand(0,CFG.segs)); if(!free(i,j)) return false; farm[i][j].type='dropout'; farm[i][j].pct=0; used.add(key(i,j)); return true; });
+  // 배경 이웃 어장 (스캔 대상 아님)
+  decor=[]; for(let i=0;i<DECOR;i++){ const segs=[]; for(let j=0;j<CFG.segs;j++) segs.push({pct:rand(0,6)+(rand()<0.06?rand(15,45):0), resp:1, type:'normal'}); decor.push(segs); }
+}
+let decor=[];
+const segAt=(i,j)=> i<CFG.lines ? farm[i][j] : decor[i-CFG.lines][j];
+const WEATHERS=[
+  {name:'맑음',fogK:190,shake:1.0,wind:2.1,windDir:'NW',vis:'10 km',cloud:0},
+  {name:'옅은 안개',fogK:85,shake:0.8,wind:1.2,windDir:'N',vis:'600 m',cloud:0.6},
+  {name:'흐림',fogK:140,shake:1.2,wind:3.4,windDir:'W',cloud:1,vis:'5 km'},
+  {name:'바람 강함',fogK:170,shake:2.4,wind:6.8,windDir:'NW',cloud:0.5,vis:'8 km'},
+];
+function newDay(){
+  const w=WEATHERS[day===1?0:Math.floor(rand(0,WEATHERS.length))];
+  today={ day, scans:Array.from({length:CFG.lines},()=>Array(CFG.segs).fill(null)), volume:0, log:[], flightSec:0, nScan:0, env:+(0.7+rand()*0.6).toFixed(2), done:false,
+          frames:0, verifies:0, backtracks:0, glares:0, falseAlarms:0, weather:w, temp:(-1+rand()*5).toFixed(0),
+          // 시연용: 매일 글레어 재촬영 1회·판독 누락→복귀 재판독 1회는 반드시 발생 (서로 다른 구간, 줄 중간부)
+          forceGlare:key(Math.floor(rand(0,CFG.lines)),4+Math.floor(rand(0,8))), forceMiss:key(Math.floor(rand(0,CFG.lines)),13+Math.floor(rand(0,8))) };
+  drone={ x:HUB.x, y:HUB.y, alt:GROUND_ALT, yaw:-1.9, pitch:CFG.pitchDeg, line:0, dir:1, phase:'takeoff', t:0, tank:CFG.tank, bat:100, spray:null,
+          aheadKey:null, obs:null, pending:new Map(), verify:null, backTarget:null, refillT:0, refills:0, chargeT:0, tookOff:false };
+  particles=[];
+}
+function resetAll(){ makeFarm(); memory=new Map(); day=1; days=[]; newDay(); running=false;
+  document.getElementById('btnPlay').textContent='▶ 비행 시작'; document.getElementById('btnBrief').disabled=true; document.getElementById('btnNext').disabled=true;
+  renderMemory(); updateHUDStatic(); setReadIdle(); log('시스템 초기화. 비행 시작을 누르세요.'); }
+
+// ---------- 날짜/조석/로그 ----------
+function dateOf(d){ const x=new Date(CFG.startDate); x.setDate(x.getDate()+d-1); return x; }
+function fmtDate(d){ const x=dateOf(d); return `${x.getMonth()+1}월 ${x.getDate()}일(${'일월화수목금토'[x.getDay()]})`; }
+function tideMin(d){ return CFG.tideBase+(d-1)*50; }
+function mulDae(d){ return ((d+6)%15)+1; }
+function fmtClock(min,sec=0){ const t=Math.floor(min*60+sec); return `${pad2(Math.floor(t/3600)%24)}:${pad2(Math.floor(t/60)%60)}:${pad2(t%60)}`; }
+function log(msg){ const t=fmtClock(tideMin(day),today.flightSec); today.log.push({t,msg}); document.getElementById('logLine').innerHTML=`<span class="t">${t}</span> &nbsp;${msg}`; }
+
+// ---------- 측정 ----------
+function sampleOf(i,j,sigma=4){ const seg=farm[i][j]; if(seg.type==='dropout') return -1; return clamp(seg.pct+gauss()*sigma,0,99); }
+function measure(i,j,obs){
+  const seg=farm[i][j]; const frames=obs?obs.samples.length:0;
+  if(seg.type==='dropout') return {pct:0,cls:'bad',conf:0.9+rand()*0.08,bg:-6+gauss()*2,frames,spread:0};
+  const samples= obs&&frames>=5 ? obs.samples : Array.from({length:12},()=>sampleOf(i,j));
+  const pct=median(samples); const s=[...samples].sort((a,b)=>a-b); const spread=s[Math.floor(s.length*0.84)]-s[Math.floor(s.length*0.16)];
+  const bg=4-0.5*pct+gauss()*0.6; const cls=pct>=threshold?'warn':'ok'; const dist=Math.abs(pct-threshold);
+  const conf=clamp(0.62+Math.min(samples.length,90)/300+dist/60-spread/60+(obs&&obs.nadir?0.06:0),0.55,0.99);
+  return {pct,cls,conf,bg,frames:samples.length,spread};
+}
+function doseFor(measured,mem,maintenance){ const mul=mem?mem.doseMul:1; if(maintenance) return +(0.2*mul).toFixed(2); return +(clamp(0.25+measured/100*0.9,0.2,1.2)*mul).toFixed(2); }
+
+// 최종 확정 (수직 재확인 후 또는 분명한 정상 통과 시)
+function finalizeSegment(i,j,obs){
+  const k=key(i,j); const m=measure(i,j,obs); m.nadir=!!(obs&&obs.nadir); today.frames+=m.frames;
+  let mem=memory.get(k); let note='',delta=null,spray=false,dose=0,memState='없음',maintenance=false;
+  if(mem&&mem.status==='active'){
+    const prev=mem.history[mem.history.length-1];
+    if(prev&&prev.day<day){
+      delta=m.pct-prev.pct; const imp=-delta; const expected=CFG.effPerL*(prev.dose||0.2);
+      if(m.cls!=='bad' && prev.dose>0){
+        if(imp<expected*0.5){ mem.doseMul=Math.min(2.0,+(mem.doseMul+0.25).toFixed(2)); note=`학습: 호전 ${imp>=0?'-':'+'}${Math.abs(imp).toFixed(0)}%p (기대 ${expected.toFixed(0)}%p 미달) → 살포 배율 ↑ ${mem.doseMul.toFixed(2)}`; }
+        else if(imp>expected*1.3){ mem.doseMul=Math.max(0.6,+(mem.doseMul-0.15).toFixed(2)); note=`학습: 호전 -${imp.toFixed(0)}%p (기대 초과) → 살포 배율 ↓ ${mem.doseMul.toFixed(2)}`; }
+        else note=`학습: 호전 -${imp.toFixed(0)}%p (기대 범위) → 배율 유지 ${mem.doseMul.toFixed(2)}`;
+      }
+      mem.lastDelta=delta;
+    }
+    memState=`D${mem.openedDay}부터 추적 (${mem.history.length}회)`;
+    if(m.pct<CFG.recover){ mem.lowStreak=(mem.lowStreak||0)+1; spray=false; note=(note?note+' · ':'')+`${CFG.recover}% 미만 → 살포 생략, 관찰 (${mem.lowStreak}/2일)`; }
+    else { mem.lowStreak=0; spray=true; maintenance=m.pct<threshold; if(maintenance) note=(note?note+' · ':'')+'회복 중 (임계값 미만) → 유지 살포'; }
+    if(mem.lowStreak>=2){ mem.status='recovered'; mem.closedDay=day; spray=false; note=`✓ 이틀 연속 ${CFG.recover}% 미만 → 정상 복귀, 추적 종료`; log(`${seglabel(i,j)} 정상 복귀 확인 → 추적 종료`); }
+  }
+  if(!mem&&m.cls==='warn'){ mem={openedDay:day,history:[],doseMul:1.0,status:'active',lowStreak:0,lastDelta:null}; memory.set(k,mem); memState='신규 등록'; spray=true; note='신규 황백화 → 메모리 등록 · 내일 재점검'; }
+  else if(mem&&mem.status==='recovered'&&m.cls==='warn'){ mem.status='active'; mem.openedDay=day; mem.lowStreak=0; mem.reopened=true; memState='재발 → 재추적'; spray=true; note='재발 감지 → 재추적 시작'; }
+  if(m.cls==='bad'){ spray=false; note='탈락(그물 노출) → 살포 대상 아님 · 현장 확인 보고'; }
+  if(obs&&obs.reasons&&obs.reasons.some(r=>r.startsWith('황백화 예비'))&&m.cls==='ok'&&!(mem&&mem.status==='active')){ today.falseAlarms++; note='수직 재확인 결과 정상 → 살포 생략 (선행 판독 오경보 차단)'; }
+  if(spray) dose=doseFor(m.pct,mem,maintenance);
+  const rec={day,pct:m.pct,cls:m.cls,conf:m.conf,bg:m.bg,frames:m.frames,nadir:m.nadir,dose,prev:(mem&&mem.history.length&&mem.history[mem.history.length-1].day<day)?mem.history[mem.history.length-1].pct:null,maintenance,reasons:obs?obs.reasons:null};
+  today.scans[i][j]=rec; today.nScan++;
+  if(mem&&(mem.status!=='recovered'||mem.closedDay===day)) mem.history.push({day,pct:m.pct,dose});
+  setRead({i,j,m,memState,delta,spray,dose,mem,note,maintenance});
+  if(m.cls==='warn') log(`${seglabel(i,j)} 황백화 ${m.pct.toFixed(0)}% 확정 (${m.frames}fr, B−G ${m.bg.toFixed(0)}) ${spray?`→ 정지 살포 ${dose.toFixed(2)} L`:''}`);
+  else if(m.cls==='bad') log(`${seglabel(i,j)} 탈락 확정 · 그물 노출 · 현장 확인 보고`);
+  else if(spray) log(`${seglabel(i,j)} ${m.pct.toFixed(0)}% (추적 구간 회복 중) → 유지 살포 ${dose.toFixed(2)} L`);
+  else if(obs&&obs.nadir) log(`${seglabel(i,j)} 수직 재확인 ${m.pct.toFixed(0)}% → 정상 확정 · 살포 없음`);
+  renderMemory();
+  return {spray,dose};
+}
+
+// 선행 카메라가 구간을 벗어날 때: 예비 판정 → 통과 확정 또는 정지 예약
+function prelim(o){
+  if(today.scans[o.i][o.j]) return;
+  if(o.missed){ return; } // 판독 누락 (프레임 드롭) — 줄 끝 커버리지 검사에서 되돌아감
+  const med=median(o.samples); o.pre=med; const mem=memory.get(o.key); const reasons=[];
+  if(o.glare){ reasons.push('역광 글레어 · 프레임 무효'); today.glares++; }
+  else if(o.samples.length<15) reasons.push('프레임 부족');
+  if(med<0) reasons.push('탈락 의심');
+  else if(!o.glare && med>=threshold) reasons.push(`황백화 예비 ${med.toFixed(0)}%`);
+  else if(!o.glare && med>=threshold-3) reasons.push(`경계값 ${med.toFixed(0)}%`);
+  if(mem&&mem.status==='active') reasons.push('추적 구간 재점검');
+  if(reasons.length){ o.verify=true; o.reasons=reasons; drone.pending.set(o.key,o); log(`${seglabel(o.i,o.j)} ${reasons.join(' · ')} → 상공 정지 · 수직 재확인 예약`); }
+  else finalizeSegment(o.i,o.j,o); // 분명한 정상 → 통과
+}
+function beginVerify(i,j,obs,why){
+  drone.phase='verify'; drone.spray=null; drone.obs=null; drone.aheadKey=null;
+  drone.verify={i,j,obs:obs||{i,j,key:key(i,j),samples:[],reasons:[why||'복귀 재판독'],glare:false},stage:'tilt',t:0,nadir:[],acc:0,result:null,sprayT:0};
+  drone.verify.obs.reasons=drone.verify.obs.reasons||[why]; today.verifies++;
+}
+const angleDiff=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
+// 회전 속도 제한 조종: 목표 방위로 서서히 기수를 돌리며 현재 기수 방향으로 전진 (곡선 비행)
+function steerTo(tx,ty,sp,dt,rate,blendTo,blendDist){
+  const dx=tx-drone.x, dy=ty-drone.y; const d=Math.hypot(dx,dy); if(d<1e-6) return 0;
+  let desired=Math.atan2(dx,dy);
+  if(blendTo!==undefined&&blendTo!==null&&d<blendDist){ const t=1-d/blendDist; desired=desired+angleDiff(blendTo,desired)*t; }
+  const diff=angleDiff(desired,drone.yaw); drone.yaw+=clamp(diff,-rate*dt,rate*dt);
+  const spEff=Math.min(sp,Math.max(1.6,d*0.9)); const m=Math.min(d,spEff*dt); drone.x+=Math.sin(drone.yaw)*m; drone.y+=Math.cos(drone.yaw)*m; return d-m;
+}
+function moveTo(tx,ty,sp,dt,turnYaw){ const dx=tx-drone.x, dy=ty-drone.y; const d=Math.hypot(dx,dy); if(d<1e-6) return 0; const m=Math.min(d,sp*dt); drone.x+=dx/d*m; drone.y+=dy/d*m; if(turnYaw) drone.yaw=Math.atan2(dx,dy); return d-m; }
+const curSpeed=()=>({fly:CFG.speed,turn:CFG.speed,transit:6,return:6,backtrack:3}[drone.phase]||0);
+const activeCount=()=>[...memory.values()].filter(m=>m.status==='active').length;
+
+// ---------- 시뮬레이션 스텝 ----------
+function step(dt){
+  if(!running||today.done) return;
+  today.flightSec+=dt;
+  const drain=()=>{ drone.bat=Math.max(5,drone.bat-dt*0.09); };
+  switch(drone.phase){
+    case 'takeoff':
+      if(!drone.tookOff){ drone.tookOff=true; log(`${fmtDate(day)} 간조 ${fmtClock(tideMin(day)).slice(0,5)} · 기상 ${today.weather.name} · 시정 ${today.weather.vis} · 바람 ${today.weather.wind} m/s ${today.weather.windDir} · 기온 ${today.temp} ℃ · 이륙 · 재점검 대상 ${activeCount()}구간`); }
+      drone.alt=Math.min(CFG.alt,drone.alt+1.6*dt); drain();
+      { const want=Math.atan2(lineX(0)-HUB.x,-34-HUB.y); drone.yaw+=clamp(angleDiff(want,drone.yaw),-0.9*dt,0.9*dt); }
+      if(drone.alt>=CFG.alt){ drone.phase='transit'; drone.leg=0; } return;
+    case 'transit': { drain();
+      if(drone.leg===0){ if(steerTo(lineX(0),-34,6,dt,1.1)<=2.0) drone.leg=1; } // 1구간: 1번 줄 남쪽 진입점까지 곡선 비행
+      else { if(steerTo(lineX(0),-10,5,dt,1.1,0,14)<=1.5){ drone.phase='fly'; drone.line=0; drone.dir=1; log('어장 진입 · 1번 줄 선행 판독 시작 (−35° 카메라 · 30 fps 투표)'); } } // 2구간: 북으로 정렬하며 진입
+      return; }
+    case 'return': drain(); if(steerTo(HUB.x,HUB.y,6,dt,1.1)<=1.2){ drone.phase='land'; log('충전 허브 상공 도착 · 착륙 개시'); } return;
+    case 'land': drone.alt=Math.max(GROUND_ALT,drone.alt-1.4*dt); drone.x+=(HUB.x-drone.x)*(1-Math.exp(-dt*2)); drone.y+=(HUB.y-drone.y)*(1-Math.exp(-dt*2)); if(drone.alt<=GROUND_ALT){ drone.phase='charge'; drone.chargeT=0; log(`착륙 · 배터리 ${drone.bat.toFixed(0)}% → 충전·영양제 재충전`); } return;
+    case 'charge': drone.chargeT+=dt; drone.bat=Math.min(100,drone.bat+dt*9); drone.tank=Math.min(CFG.tank,drone.tank+dt*2); if(drone.bat>=100&&drone.chargeT>6) finishDay(); return;
+    case 'turn': { drain(); const dur=CFG.spacing/CFG.speed*2.1; drone.t+=dt/dur; const t=clamp(drone.t,0,1), e=t*t*(3-2*t); const f=drone.turnFrom;
+      drone.x=f.x+(lineX(drone.line+1)-f.x)*e; drone.y=f.y+drone.dir*5*Math.sin(Math.PI*t); drone.yaw=f.yaw+(drone.dir>0?1:-1)*Math.PI*e;
+      if(drone.t>=1){ drone.line++; drone.dir*=-1; drone.phase='fly'; drone.yaw=drone.dir>0?0:Math.PI; } return; }
+    case 'backtrack': { drain(); const ty=(drone.backTarget+0.5)*CFG.segLen; if(moveTo(lineX(drone.line),ty,3,dt,false)<=0.05){ const j=drone.backTarget; drone.backTarget=null; beginVerify(drone.line,j,null,'판독 누락 → 복귀 재판독'); } return; }
+    case 'verify': stepVerify(dt); return;
+    case 'fly': {
+      drain(); drone.y+=drone.dir*CFG.speed*dt;
+      // 줄 위로 부드럽게 정렬 (급격한 위치·기수 변화 없음)
+      drone.x+=(lineX(drone.line)-drone.x)*(1-Math.exp(-dt*2.5)); drone.yaw+=angleDiff(drone.dir>0?0:Math.PI,drone.yaw)*(1-Math.exp(-dt*3));
+      const end= drone.dir>0 ? drone.y>L+8 : drone.y<-8;
+      if(end){
+        if(drone.obs){ prelim(drone.obs); drone.obs=null; drone.aheadKey=null; }
+        // 커버리지 검사: 미판독 구간이 있으면 되돌아간다
+        const missing=[]; for(let j=0;j<CFG.segs;j++) if(!today.scans[drone.line][j]) missing.push(j);
+        if(missing.length){ const j=missing.reduce((b,j)=>Math.abs((j+0.5)*CFG.segLen-drone.y)<Math.abs((b+0.5)*CFG.segLen-drone.y)?j:b,missing[0]);
+          drone.backTarget=j; drone.phase='backtrack'; today.backtracks++; drone.pending.delete(key(drone.line,j)); log(`${drone.line+1}번 줄 끝 · 미판독 ${missing.length}구간 (${missing.map(j=>rangeLabel(j,j)).join(', ')}) → 되돌아가 재판독`); return; }
+        if(drone.line>=CFG.lines-1){ drone.phase='return'; log(`${CFG.lines}번 줄 완료 · ${today.nScan}/${CFG.lines*CFG.segs}구간 전수 확정 · 육상 충전 허브로 복귀`); return; }
+        drone.phase='turn'; drone.t=0; drone.turnFrom={x:drone.x,y:drone.y,yaw:drone.yaw}; log(`${drone.line+1}번 줄 완료 (미판독 0) → ${drone.line+2}번 줄로 선회`); return;
+      }
+      // ① 선행 카메라 투표
+      const look=CFG.alt/Math.tan(CFG.pitchDeg*Math.PI/180); const sy=drone.y+Math.cos(drone.yaw)*look;
+      let k=null,cj=-1; if(sy>=0&&sy<L){ cj=Math.floor(sy/CFG.segLen); k=key(drone.line,cj); }
+      if(k!==drone.aheadKey){
+        if(drone.obs) prelim(drone.obs);
+        drone.aheadKey=k;
+        if(k&&!today.scans[drone.line][cj]&&!drone.pending.has(k)){ const o={i:drone.line,j:cj,key:k,samples:[],acc:0,pre:null,glare:k===today.forceGlare||rng()<0.02,missed:k===today.forceMiss||rng()<0.01}; if(o.glare&&o.missed) o.missed=false; drone.obs=o; }
+        else drone.obs=null;
+      }
+      if(drone.obs&&!drone.obs.missed){ const o=drone.obs; o.acc+=dt; while(o.acc>=1/30){ o.acc-=1/30; o.samples.push(o.glare? clamp(sampleOf(o.i,o.j)+rand(-30,30),0,99) : sampleOf(o.i,o.j)); } }
+      // ② 정지 예약 구간의 중심 도달 → 정지·수직 재확인
+      for(const [pk,o] of drone.pending){ if(o.i!==drone.line) continue; const yc=(o.j+0.5)*CFG.segLen;
+        if((drone.dir>0&&drone.y>=yc)||(drone.dir<0&&drone.y<=yc)){ drone.pending.delete(pk); drone.y=yc; if(drone.obs){ prelim(drone.obs); drone.obs=null; drone.aheadKey=null; } beginVerify(o.i,o.j,o); return; } }
+      return; }
+  }
+}
+function stepVerify(dt){
+  const v=drone.verify; drone.x=lineX(drone.line); drone.yaw=drone.dir>0?0:Math.PI; drone.bat=Math.max(5,drone.bat-dt*0.05);
+  switch(v.stage){
+    case 'tilt': v.t+=dt; drone.pitch=CFG.pitchDeg+(CFG.nadirDeg-CFG.pitchDeg)*Math.min(1,v.t/0.6); if(v.t>=0.6){ v.stage='vote'; v.t=0; } return;
+    case 'vote': v.t+=dt; v.acc+=dt; while(v.acc>=1/30){ v.acc-=1/30; v.nadir.push(sampleOf(v.i,v.j,2.5)); }
+      if(v.t>=1.0){ const base=(v.obs&&!v.obs.glare)?v.obs.samples:[]; const combined=[...base,...v.nadir,...v.nadir]; const obs={...v.obs,samples:combined,nadir:v.nadir.length,reasons:v.obs.reasons};
+        v.result=finalizeSegment(v.i,v.j,obs);
+        if(v.result.spray){ if(drone.tank<v.result.dose){ v.stage='refill'; v.t=0; log(`탱크 부족 (${drone.tank.toFixed(1)} L) → 현장 보충 후 살포`); } else { v.stage='spray'; v.sprayT=1.0+v.result.dose*1.6; drone.spray={i:v.i,j:v.j,dose:v.result.dose,left:v.result.dose,rate:v.result.dose/v.sprayT}; } }
+        else { v.stage='untilt'; v.t=0; } } return;
+    case 'refill': v.t+=dt; if(v.t>4){ drone.tank=CFG.tank; drone.refills++; v.stage='spray'; v.sprayT=1.0+v.result.dose*1.6; drone.spray={i:v.i,j:v.j,dose:v.result.dose,left:v.result.dose,rate:v.result.dose/v.sprayT}; log('탱크 보충 완료 · 살포 시작'); } return;
+    case 'spray': { const s=drone.spray; const amt=Math.min(s.left,s.rate*dt,drone.tank); s.left-=amt; drone.tank-=amt; today.volume+=amt; if(s.left<=1e-3){ drone.spray=null; v.stage='untilt'; v.t=0; log(`${seglabel(v.i,v.j)} 살포 완료 ${s.dose.toFixed(2)} L · 재출발`); } return; }
+    case 'untilt': v.t+=dt; drone.pitch=CFG.nadirDeg+(CFG.pitchDeg-CFG.nadirDeg)*Math.min(1,v.t/0.5); if(v.t>=0.5){ drone.pitch=CFG.pitchDeg; drone.verify=null; drone.phase='fly'; } return;
+  }
+}
+
+// ---------- 하루 종료 / 다음 날 ----------
+function finishDay(){
+  today.done=true; running=false; drone.phase='done'; document.getElementById('btnPlay').textContent='▶ 비행 시작';
+  const b=buildBriefing(); days.push(b);
+  document.getElementById('btnBrief').disabled=false; document.getElementById('btnNext').disabled=false;
+  log(`충전 완료 · ${today.nScan}/${CFG.lines*CFG.segs}구간 확정 · 살포 ${today.volume.toFixed(1)} L · 브리핑 생성`);
+  showBriefing(days.length-1);
+  if(autoNext){ setTimeout(()=>{ if(today.done){ nextDay(); hideModal(); running=true; document.getElementById('btnPlay').textContent='❚❚ 일시정지'; } },4500); }
+}
+function evolveOvernight(){
+  const env=today.env;
+  for(let i=0;i<CFG.lines;i++) for(let j=0;j<CFG.segs;j++){ const s=farm[i][j]; if(s.type==='dropout') continue; const r=today.scans[i][j];
+    if(r&&r.dose>0) s.pct=clamp(s.pct-CFG.effPerL*r.dose*s.resp+gauss()*2+(env-1)*2,0,95);
+    else if(s.pct>12) s.pct=clamp(s.pct+rand(1,5)*env,0,95);
+    else if(rng()<0.004*env) s.pct=clamp(s.pct+rand(12,30),0,95);
+    else s.pct=clamp(s.pct+(2-s.pct)*0.3+gauss()*0.6,0,95);
+    s.cells=null; }
+}
+function nextDay(){ if(!today.done) return; evolveOvernight(); day++; newDay(); document.getElementById('btnNext').disabled=true; updateHUDStatic(); setReadIdle(); renderMemory();
+  log(`${fmtDate(day)} · 간조 ${fmtClock(tideMin(day))} · 추적 구간 ${activeCount()}개 재점검 예정`); }
+
+// ---------- 브리핑 ----------
+function groupRanges(idx){ const out=[]; let s=null,p=null; for(const j of idx){ if(s===null){s=j;p=j;} else if(j===p+1){p=j;} else {out.push([s,p]); s=j;p=j;} } if(s!==null) out.push([s,p]); return out; }
+function buildBriefing(){
+  const lines=[]; let nWarn=0,nBad=0,sumPct=0,sumPrev=0,nPrev=0; const vol=today.volume; const recovered=[],fresh=[],worse=[],better=[],drop=[];
+  for(let i=0;i<CFG.lines;i++){ const res=today.scans[i]; const warnIdx=[],badIdx=[]; let lv=0;
+    res.forEach((r,j)=>{ if(!r) return; if(r.cls==='warn') warnIdx.push(j); if(r.cls==='bad') badIdx.push(j); lv+=r.dose; });
+    const ranges=groupRanges(warnIdx).map(([a,b])=>{ const segs=[]; for(let j=a;j<=b;j++) segs.push(res[j]); const avg=segs.reduce((x,r)=>x+r.pct,0)/segs.length; const prevs=segs.filter(r=>r.prev!==null); const pavg=prevs.length?prevs.reduce((x,r)=>x+r.prev,0)/prevs.length:null; return {a,b,avg,pavg,label:rangeLabel(a,b),mx:Math.max(...segs.map(r=>r.pct))}; });
+    const avg=ranges.length?ranges.reduce((x,r)=>x+r.avg*(r.b-r.a+1),0)/warnIdx.length:0; const pr=ranges.filter(r=>r.pavg!==null); const pn=pr.reduce((x,r)=>x+(r.b-r.a+1),0); const pavg=pn?pr.reduce((x,r)=>x+r.pavg*(r.b-r.a+1),0)/pn:null;
+    nWarn+=warnIdx.length; nBad+=badIdx.length; sumPct+=avg*warnIdx.length; if(pavg!==null){ sumPrev+=pavg*pn; nPrev+=pn; }
+    badIdx.forEach(j=>drop.push(seglabel(i,j)));
+    const tracking=res.filter(r=>r&&r.maintenance).length;
+    lines.push({i,status:warnIdx.length?'warn':(tracking?'ok':(badIdx.length?'bad':'ok')),nWarn:warnIdx.length,ranges,badIdx,avg,pavg,vol:lv,tracking}); }
+  const freshByLine=Array.from({length:CFG.lines},()=>[]);
+  for(const [k,m] of memory){ const [i,j]=k.split('-').map(Number); const r=today.scans[i][j]; if(!r) continue;
+    if(m.status==='recovered'&&m.closedDay===day) recovered.push(seglabel(i,j));
+    else if(m.openedDay===day&&m.status==='active'&&!m.reopened) freshByLine[i].push(j);
+    else if(m.status==='active'&&r.prev!==null){ const d=r.pct-r.prev; if(d>=3) worse.push({i,j,from:r.prev,to:r.pct,mul:m.doseMul}); else if(d<=-3) better.push({i,j,from:r.prev,to:r.pct}); } }
+  freshByLine.forEach((idx,i)=>{ idx.sort((a,b)=>a-b); for(const [a,c] of groupRanges(idx)){ let s=0; for(let j=a;j<=c;j++) s+=today.scans[i][j].pct; fresh.push(`${i+1}번 줄 ${rangeLabel(a,c)} ${(s/(c-a+1)).toFixed(0)}%`); } });
+  const act=[...memory.entries()].filter(([k,m])=>m.status==='active');
+  const planVol=act.reduce((x,[k,m])=>{ const [i,j]=k.split('-').map(Number); const r=today.scans[i][j]; const p=r?r.pct:30; return x+(p<CFG.recover?0:doseFor(p,m,p<threshold)); },0);
+  const unscanned=[]; today.scans.forEach((row,i)=>row.forEach((r,j)=>{ if(!r) unscanned.push(seglabel(i,j)); }));
+  return {day,date:fmtDate(day),tide:fmtClock(tideMin(day)),flight:today.flightSec,vol,nScan:today.nScan,nWarn,nBad,avg:nWarn?sumPct/nWarn:0,pavg:nPrev?sumPrev/nPrev:null,
+    prevWarn:days.length?days[days.length-1].nWarn:null,lines,recovered,fresh,worse,better,drop,active:act.length,planVol,env:today.env,refills:drone.refills,
+    avgFrames:today.nScan?today.frames/today.nScan:0,verifies:today.verifies,backtracks:today.backtracks,glares:today.glares,falseAlarms:today.falseAlarms,unscanned,
+    scans:today.scans.map(row=>row.map(r=>r&&{cls:r.cls,pct:r.pct,dose:r.dose,prev:r.prev,maintenance:r.maintenance})), weather:today.weather.name};
+}
+// ---------- 어민용 어장 그림 (한눈에 보기) ----------
+function drawFarmMap(cv,b){
+  const dpr=window.devicePixelRatio||1; const w=cv.clientWidth,h=cv.clientHeight; cv.width=w*dpr; cv.height=h*dpr; const c=cv.getContext('2d'); c.scale(dpr,dpr);
+  const ML=86, MR=128, MT=46, MB=28; const pw=w-ML-MR, ph=h-MT-MB; const rowH=ph/CFG.lines, band=Math.min(24,rowH*0.5); const segW=pw/CFG.segs;
+  // 배경: 갯벌 + 육지/바다
+  c.fillStyle='#4f4a42'; c.fillRect(0,0,w,h);
+  if(mudTile){ c.save(); c.globalAlpha=0.35; const pat=c.createPattern(mudTile,'repeat'); pat.setTransform(new DOMMatrix([0.35,0,0,0.35,0,0])); c.fillStyle=pat; c.fillRect(0,0,w,h); c.restore(); }
+  c.fillStyle='#6b6a5c'; c.fillRect(0,0,ML-30,h); c.fillStyle='#8a8676'; c.fillRect(ML-34,0,5,h);
+  c.fillStyle='rgba(150,165,176,.55)'; c.fillRect(w-28,0,28,h);
+  c.fillStyle='#e6edf3'; c.font='bold 12px '+'Malgun Gothic,sans-serif'; c.textAlign='center'; c.fillText('육지(서)',(ML-30)/2,18); c.font='11px Malgun Gothic,sans-serif'; c.fillStyle='#cfd6dd'; c.fillText('충전 허브',(ML-30)/2,34);
+  c.fillStyle='#9aa0a6'; c.fillRect((ML-30)/2-9,h-48,18,18); c.strokeStyle='#e3b341'; c.lineWidth=2; c.strokeRect((ML-30)/2-9,h-48,18,18); c.fillStyle='#e3b341'; c.font='bold 11px Consolas'; c.fillText('H',(ML-30)/2,h-35);
+  c.save(); c.translate(w-10,h/2); c.rotate(Math.PI/2); c.fillStyle='#e6edf3'; c.font='bold 12px Malgun Gothic,sans-serif'; c.fillText('바다(동)',0,0); c.restore();
+  // 거리 눈금
+  c.fillStyle='#cfd6dd'; c.font='11px Consolas,monospace'; c.textAlign='center';
+  for(let m=0;m<=L;m+=10){ const x=ML+m/L*pw; c.fillRect(x,MT-14,1,m%20===0?8:4); if(m%20===0) c.fillText(m+'m',x,MT-18); }
+  // 줄
+  for(let i=0;i<CFG.lines;i++){ const yc=MT+(i+0.5)*rowH, y0=yc-band/2; const row=b.scans[i];
+    // 줄 번호 + 상태 칩
+    const l=b.lines[i]; c.textAlign='right'; c.fillStyle='#ffffff'; c.font='bold 13px Malgun Gothic,sans-serif'; c.fillText(`${i+1}번 줄`,ML-10,yc+5);
+    // 지주 눈금
+    c.fillStyle='rgba(255,255,255,.18)'; for(let j=0;j<=CFG.segs;j++){ const x=ML+j*segW; c.fillRect(x,y0-4,1,band+8); }
+    // 구간 색
+    for(let j=0;j<CFG.segs;j++){ const r=row[j]; const x=ML+j*segW; let col='#2f8f3f';
+      if(r){ if(r.cls==='warn'){ const t=clamp((r.pct-threshold)/50,0,1); const a=[227,179,65],bb=[232,108,46]; col=`rgb(${Math.round(a[0]+(bb[0]-a[0])*t)},${Math.round(a[1]+(bb[1]-a[1])*t)},${Math.round(a[2]+(bb[2]-a[2])*t)})`; }
+        else if(r.cls==='bad') col='#f85149'; else if(r.maintenance||r.dose>0) col='#8fd39a'; else col='#2f8f3f'; } else col='#6b7a89';
+      c.fillStyle=col; c.fillRect(x+1,y0,segW-2,band);
+      if(r&&r.cls==='bad'){ c.save(); c.beginPath(); c.rect(x+1,y0,segW-2,band); c.clip(); c.strokeStyle='rgba(0,0,0,.5)'; c.lineWidth=1.5; for(let k=-band;k<segW+band;k+=6){ c.beginPath(); c.moveTo(x+k,y0+band); c.lineTo(x+k+band,y0); c.stroke(); } c.restore(); }
+      if(r&&(r.maintenance||r.dose>0)&&r.cls!=='warn'){ c.strokeStyle='#39d0d8'; c.lineWidth=1.5; c.strokeRect(x+1.5,y0+0.5,segW-3,band-1); }
+      if(r&&r.dose>0){ c.fillStyle='#ffffff'; c.beginPath(); c.arc(x+segW/2,yc,3.2,0,7); c.fill(); c.fillStyle='#1b8ea3'; c.beginPath(); c.arc(x+segW/2,yc,2,0,7); c.fill(); }
+    }
+    // 황백화 구간 라벨 (위/아래 번갈아)
+    l.ranges.forEach((r,n)=>{ const xa=ML+r.a*segW, xb=ML+(r.b+1)*segW; const xm=(xa+xb)/2; const txt=`${r.label} · ${r.avg.toFixed(0)}%${r.pavg!==null?` (어제 ${r.pavg.toFixed(0)}%)`:''}`;
+      c.font='bold 11px Malgun Gothic,sans-serif'; const tw=c.measureText(txt).width+12; const above=n%2===0; const ly=above?y0-9:y0+band+9;
+      c.fillStyle='rgba(255,255,255,.93)'; c.beginPath(); c.roundRect(xm-tw/2,ly-8,tw,16,4); c.fill(); c.fillStyle='#5a3d00'; c.textAlign='center'; c.fillText(txt,xm,ly+4);
+      c.strokeStyle='rgba(255,255,255,.9)'; c.lineWidth=1; c.beginPath(); c.moveTo(xm,above?ly+8:ly-8); c.lineTo(xm,above?y0:y0+band); c.stroke(); });
+    if(l.badIdx.length){ groupRanges(l.badIdx).forEach(([a,bb])=>{ const xm=ML+(a+bb+1)/2*segW; const txt=`탈락 ${rangeLabel(a,bb)}`; c.font='bold 11px Malgun Gothic,sans-serif'; const tw=c.measureText(txt).width+12; c.fillStyle='rgba(248,81,73,.95)'; c.beginPath(); c.roundRect(xm-tw/2,y0+band+1,tw,16,4); c.fill(); c.fillStyle='#fff'; c.textAlign='center'; c.fillText(txt,xm,y0+band+13); }); }
+    // 오른쪽 상태
+    c.textAlign='left'; c.font='bold 12px Malgun Gothic,sans-serif';
+    const st= l.status==='warn'?[`황백화 ${l.nWarn}구간`,'#e3b341']:(l.status==='bad'?['탈락','#f85149']:(l.tracking?['회복 중','#39d0d8']:['정상','#3fb950']));
+    c.fillStyle=st[1]; c.fillText(st[0],ML+pw+8,yc+4);
+  }
+}
+function fmtDelta(cur,prev,unit='%p'){ if(prev===null||prev===undefined) return `<span class="flat">신규</span>`; const d=cur-prev; if(Math.abs(d)<0.5) return `<span class="flat">±0${unit}</span>`; return d<0?`<span class="up">▼ ${Math.abs(d).toFixed(0)}${unit}</span>`:`<span class="down">▲ ${d.toFixed(0)}${unit}</span>`; }
+function smsText(b){
+  const o=[]; o.push(`[간조스캔 작업 브리핑] ${b.date} · ${b.day}일차 · 서천 마량 지주식 3호 어장`);
+  o.push(`비행 ${b.tide}~${fmtClock(tideMin(b.day),b.flight)} · ${CFG.lines}줄 ${b.nScan}구간 전수 확정(미판독 ${b.unscanned.length}) · 정지 확인 ${b.verifies}회 · 영양제 ${b.vol.toFixed(1)} L · 허브 복귀 완료`);
+  o.push(`황백화 ${b.nWarn}구간${b.prevWarn!==null?` (어제 ${b.prevWarn})`:''} · 평균 ${b.avg.toFixed(0)}%${b.pavg!==null?` (어제 ${b.pavg.toFixed(0)}%)`:''}${b.nBad?` · 탈락 ${b.nBad}구간`:''}`); o.push('');
+  for(const l of b.lines){
+    if(l.status==='ok'&&!l.tracking&&!l.badIdx.length){ o.push(`${l.i+1}번 줄: 정상`); continue; }
+    if(l.status==='ok'&&l.tracking){ o.push(`${l.i+1}번 줄: 정상 범위 (회복 중 ${l.tracking}구간 유지 살포 ${l.vol.toFixed(1)} L)${l.badIdx.length?` · 탈락 ${groupRanges(l.badIdx).map(([a,c])=>rangeLabel(a,c)).join(', ')} 현장 확인`:''}`); continue; }
+    const parts=l.ranges.map(r=>`${r.label} ${r.avg.toFixed(0)}%${r.pavg!==null?`(어제 ${r.pavg.toFixed(0)}%)`:'(신규)'}`); const bad=l.badIdx.length?` · 탈락 ${groupRanges(l.badIdx).map(([a,c])=>rangeLabel(a,c)).join(', ')}`:'';
+    o.push(`${l.i+1}번 줄: 황백화 ${l.ranges.length?parts.join(' / '):'없음'}${bad} → 살포 ${l.vol.toFixed(1)} L 완료`); }
+  o.push('');
+  if(b.recovered.length) o.push(`[복귀] 정상 복귀: ${b.recovered.join(', ')}`);
+  if(b.fresh.length) o.push(`[신규] ${b.day===1?'첫 비행 등록':'신규 발생'}: ${b.fresh.join(', ')}`);
+  if(b.worse.length) o.push(`[악화] ${b.worse.map(w=>`${seglabel(w.i,w.j)} ${w.from.toFixed(0)}→${w.to.toFixed(0)}%`).join(', ')} (내일 살포량 상향)`);
+  if(b.drop.length) o.push(`[탈락] 현장 확인 요망: ${b.drop.join(', ')}`);
+  o.push(`내일: 추적 ${b.active}구간 재점검 (예상 살포 ${b.planVol.toFixed(1)} L) · 간조 ${fmtClock(tideMin(b.day+1))}`);
+  return o.join('\n');
+}
+function showBriefing(idx){
+  const b=days[idx]; const el=document.getElementById('briefSheet');
+  const daysel=days.map((d,n)=>`<button class="btn ${n===idx?'on':''}" data-d="${n}">${d.day}일차</button>`).join('');
+  const rows=b.lines.map(l=>{ const st=l.status==='ok'?(l.tracking?`<span class="pill cyan">회복 중</span>`:`<span class="pill ok">정상</span>`):l.status==='warn'?`<span class="pill warn">황백화 ${l.nWarn}구간 · ${l.ranges.length}곳</span>`:`<span class="pill bad">탈락</span>`;
+    const where=[...l.ranges.map(r=>`<div>${r.label} <span style="color:var(--ink2)">(최대 ${r.mx.toFixed(0)}%)</span></div>`),...(l.badIdx.length?[`<div style="color:var(--bad)">탈락 ${groupRanges(l.badIdx).map(([a,c])=>rangeLabel(a,c)).join(', ')}</div>`]:[])].join('')||'<span style="color:var(--ink3)">—</span>';
+    return `<tr><td><b>${l.i+1}번 줄</b></td><td>${st}</td><td>${where}</td><td class="num">${l.ranges.length?l.avg.toFixed(0)+'%':'—'}${l.pavg!==null?`<div style="color:var(--ink3);font-size:11px">어제 ${l.pavg.toFixed(0)}%</div>`:''}</td><td class="num">${l.ranges.length?fmtDelta(l.avg,l.pavg):'—'}</td><td class="num">${l.vol>0?l.vol.toFixed(2)+' L':'—'}</td>
+      <td style="color:var(--ink2);font-size:11.5px">${[l.ranges.length?'정지 살포 완료 · 내일 재점검':'',l.tracking?`회복 중 ${l.tracking}구간 유지 살포`:'',l.badIdx.length?`탈락 ${l.badIdx.length}구간 현장 확인(살포 제외)`:''].filter(Boolean).join(' · ')||'이상 없음'}</td></tr>`; }).join('');
+  const list=(t,arr,cls)=>arr.length?`<li><b class="${cls||''}">${t}</b> ${arr.join(', ')}</li>`:'';
+  const sprayedSegs=b.scans.flat().filter(r=>r&&r.dose>0).length; const nPlaces=b.lines.reduce((x,l)=>x+l.ranges.length,0); const warnLines=b.lines.filter(l=>l.status==='warn');
+  const plain=[];
+  if(warnLines.length) plain.push(`<li><b>황백화가 있는 줄:</b> ${warnLines.map(l=>`${l.i+1}번 줄 (${l.ranges.map(r=>r.label).join(', ')})`).join(' · ')} → <b>모두 영양제 살포 완료</b></li>`); else plain.push('<li><b>황백화 구간 없음</b> — 모든 줄 정상</li>');
+  if(b.recovered.length) plain.push(`<li><b>정상으로 돌아온 곳:</b> ${b.recovered.join(', ')}</li>`);
+  if(b.worse.length) plain.push(`<li><b>어제보다 나빠진 곳:</b> ${b.worse.map(w=>`${seglabel(w.i,w.j)} (${w.from.toFixed(0)}→${w.to.toFixed(0)}%)`).join(', ')} → 내일 살포량을 늘립니다</li>`);
+  if(b.better.length) plain.push(`<li><b>어제보다 좋아진 곳:</b> ${b.better.length}구간 (평균 ${(b.better.reduce((x,w)=>x+(w.from-w.to),0)/b.better.length).toFixed(0)}%p 호전)</li>`);
+  if(b.drop.length) plain.push(`<li><b>탈락(그물만 남음) — 직접 확인 필요:</b> ${b.drop.join(', ')}</li>`);
+  plain.push(`<li><b>내일:</b> 간조 ${fmtClock(tideMin(b.day+1)).slice(0,5)}에 ${b.active}구간을 다시 점검하고 필요한 곳에 다시 뿌립니다 (예상 ${b.planVol.toFixed(1)} L)</li>`);
+  el.innerHTML=`<div class="daysel">${daysel}</div>
+    <h2>오늘 우리 어장 · ${b.date} <span style="color:var(--ink2);font-weight:500;font-size:14px">${b.day}일차 · 간조 ${b.tide.slice(0,5)} · ${b.weather||''}</span></h2>
+    <div class="sub">드론이 ${CFG.lines}줄 ${CFG.lines*CFG.segs}구간을 빠짐없이 확인하고 영양제를 뿌린 뒤 충전 허브로 돌아왔습니다. 비행 ${fmtClock(0,b.flight).slice(3)}</div>
+    <div class="bigs">
+      <div class="big warn"><b>${b.nWarn}</b><span>황백화 구간<br>${nPlaces}곳 · ${warnLines.length}개 줄</span></div>
+      <div class="big cyan"><b>${sprayedSegs}</b><span>살포 완료 구간<br>영양제 ${b.vol.toFixed(1)} L</span></div>
+      <div class="big ok"><b>${b.recovered.length}</b><span>정상 복귀<br>${b.active}구간 회복 추적 중</span></div>
+      <div class="big bad"><b>${b.nBad}</b><span>탈락 구간<br>현장 확인 필요</span></div>
+    </div>
+    <canvas id="farmMap" style="height:${96+CFG.lines*78}px"></canvas>
+    <div class="biglegend"><span><i style="background:#2f8f3f"></i>정상</span><span><i style="background:#e3b341"></i>황백화 (진할수록 심함)</span><span><i style="background:#8fd39a;border:1.5px solid #39d0d8"></i>회복 중 (유지 살포)</span><span><i style="background:#f85149"></i>탈락 · 그물만 남음</span><span><i style="background:#fff;border-radius:50%;width:10px;height:10px;box-shadow:inset 0 0 0 3px #1b8ea3"></i>오늘 살포한 곳</span></div>
+    <ul class="plain">${plain.join('')}</ul>
+    <div class="actions"><span class="sp"></span>
+      <button class="btn" id="btnDetail">상세 보고서 보기 ▾</button>
+      <button class="btn" id="btnClose">닫기</button>
+      ${idx===days.length-1&&today.done?`<button class="btn primary" id="btnNextFly">다음 날 비행 시작 ▸</button>`:''}
+    </div>
+    <div id="detail" style="display:none">
+    <h2 style="font-size:16px">상세 보고서 · ${b.date}</h2>
+    <div class="sub">서천 마량 지주식 3호 어장 · 간조 ${b.tide} (${mulDae(b.day)}물) · 비행 ${fmtClock(0,b.flight).slice(3)} · 탱크 보충 ${b.refills}회 · 환경지수 ${b.env}</div>
+    <div class="sub" style="margin-top:-8px">판독 품질 — 구간당 평균 <b style="color:var(--ink)">${b.avgFrames.toFixed(0)}프레임</b> · 정지·수직 재확인 <b style="color:var(--ink)">${b.verifies}회</b> · 복귀 재판독 <b style="color:var(--ink)">${b.backtracks}회</b> · 글레어 재촬영 ${b.glares}회 · 오경보 차단 ${b.falseAlarms}건 · 미판독 <b style="color:${b.unscanned.length?'var(--bad)':'var(--ok)'}">${b.unscanned.length}</b>${b.unscanned.length?` (${b.unscanned.join(', ')})`:' — 전수 커버'}</div>
+    <div class="tiles">
+      <div class="tile"><span>확정 구간</span><b>${b.nScan}</b><small>${CFG.lines}줄 × 24구간</small></div>
+      <div class="tile"><span>황백화 구간</span><b style="color:var(--warn)">${b.nWarn}</b><small>${b.prevWarn!==null?`어제 ${b.prevWarn} → ${fmtDelta(b.nWarn,b.prevWarn,'개')}`:'첫 비행'}</small></div>
+      <div class="tile"><span>황백화 평균</span><b>${b.nWarn?b.avg.toFixed(0)+'%':'—'}</b><small>${b.pavg!==null?`어제 ${b.pavg.toFixed(0)}% → ${fmtDelta(b.avg,b.pavg)}`:(b.day===1?'기준일':(b.nWarn?'모두 오늘 신규':'황백화 없음'))}</small></div>
+      <div class="tile"><span>영양제 살포</span><b style="color:var(--cyan)">${b.vol.toFixed(1)} L</b><small>구간별 학습 배율 적용</small></div>
+      <div class="tile"><span>내일 재점검</span><b>${b.active}</b><small>예상 살포 ${b.planVol.toFixed(1)} L</small></div>
+    </div>
+    <table class="brief"><thead><tr><th>줄</th><th>상태</th><th>황백화 위치</th><th style="text-align:right">평균</th><th style="text-align:right">전일 대비</th><th style="text-align:right">살포량</th><th>조치</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="cols">
+      <div class="box"><h5>오늘의 변화</h5><ul>
+        ${list('정상 복귀 ·',b.recovered,'up')}${list(b.day===1?'첫 비행 등록 ·':'신규 발생 ·',b.fresh)}
+        ${list('▼ 호전 ·',b.better.map(w=>`${seglabel(w.i,w.j)} ${w.from.toFixed(0)}→${w.to.toFixed(0)}%`),'up')}
+        ${list('▲ 악화 (살포량 상향) ·',b.worse.map(w=>`${seglabel(w.i,w.j)} ${w.from.toFixed(0)}→${w.to.toFixed(0)}% ×${w.mul.toFixed(2)}`),'down')}
+        ${list('탈락 · 현장 확인 ·',b.drop,'down')}
+        ${(!b.recovered.length&&!b.fresh.length&&!b.better.length&&!b.worse.length&&!b.drop.length)?'<li style="color:var(--ink3)">특이 변화 없음</li>':''}</ul></div>
+      <div class="box"><h5>일자별 추이 · 황백화 구간 수 / 평균 %</h5><canvas id="trend"></canvas></div>
+    </div>
+    <div class="box"><h5>어민 전송용 문자 요약</h5><pre id="smsText">${smsText(b).replace(/</g,'&lt;')}</pre></div>
+    <div class="actions"><span class="sp" id="copyMsg"></span><button class="btn" id="btnCopy">문자 복사</button><button class="btn" id="btnDetailClose">상세 접기 ▴</button></div>
+    </div>`;
+  document.getElementById('modal').classList.add('show');
+  el.querySelectorAll('.daysel button').forEach(bt=>bt.onclick=()=>showBriefing(+bt.dataset.d));
+  document.getElementById('btnClose').onclick=hideModal;
+  const det=document.getElementById('detail'); const bd=document.getElementById('btnDetail');
+  const setDet=(on)=>{ det.style.display=on?'block':'none'; bd.textContent=on?'상세 보고서 접기 ▴':'상세 보고서 보기 ▾'; if(on){ drawTrend(document.getElementById('trend')); det.scrollIntoView({behavior:'smooth',block:'start'}); } };
+  bd.onclick=()=>setDet(det.style.display==='none'); document.getElementById('btnDetailClose').onclick=()=>{ setDet(false); el.scrollTo({top:0,behavior:'smooth'}); };
+  drawFarmMap(document.getElementById('farmMap'),b);
+  document.getElementById('btnCopy').onclick=()=>{ const t=smsText(b); const m=document.getElementById('copyMsg'); const fb=()=>{ const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy'); m.textContent='복사됨';}catch(e){m.textContent='복사 실패 — 텍스트를 직접 선택하세요';} ta.remove(); };
+    if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(()=>m.textContent='복사됨').catch(fb); else fb(); };
+  const nf=document.getElementById('btnNextFly'); if(nf) nf.onclick=()=>{ nextDay(); hideModal(); running=true; document.getElementById('btnPlay').textContent='❚❚ 일시정지'; };
+}
+function hideModal(){ document.getElementById('modal').classList.remove('show'); }
+function drawTrend(cv){
+  const dpr=window.devicePixelRatio||1; const w=cv.clientWidth,h=cv.clientHeight; cv.width=w*dpr; cv.height=h*dpr; const c=cv.getContext('2d'); c.scale(dpr,dpr); c.clearRect(0,0,w,h);
+  const n=days.length; const padL=28,padR=16,padT=14,padB=20; const pw=w-padL-padR,ph=h-padT-padB; const maxN=Math.max(4,...days.map(d=>d.nWarn)); const maxP=Math.max(40,...days.map(d=>d.avg));
+  c.font='10px Consolas,monospace'; c.fillStyle='#6b7a89'; c.textAlign='left'; c.strokeStyle='rgba(255,255,255,.07)'; c.lineWidth=1;
+  for(let g=0;g<=2;g++){ const y=padT+ph*g/2; c.beginPath(); c.moveTo(padL,y); c.lineTo(w-padR,y); c.stroke(); }
+  c.fillText(String(maxN),4,padT+4); c.fillText('0',4,padT+ph+3);
+  const xAt=i=>n===1?padL+pw/2:padL+pw*i/(n-1); const slot=Math.min(26,pw/Math.max(n,1)*0.5);
+  days.forEach((d,i)=>{ const x=xAt(i)-slot/2,bh=ph*d.nWarn/maxN,y=padT+ph-bh; c.fillStyle='rgba(227,179,65,.55)'; c.beginPath(); c.roundRect(x,y,slot,bh,[4,4,0,0]); c.fill(); c.fillStyle='#9fb0c0'; c.textAlign='center'; c.fillText(`D${d.day}`,xAt(i),padT+ph+13); });
+  c.strokeStyle='#58a6ff'; c.lineWidth=2; c.beginPath(); days.forEach((d,i)=>{ const x=xAt(i),y=padT+ph-ph*d.avg/maxP; i?c.lineTo(x,y):c.moveTo(x,y); }); if(n>1) c.stroke();
+  days.forEach((d,i)=>{ const x=xAt(i),y=padT+ph-ph*d.avg/maxP; c.fillStyle='#0f141b'; c.beginPath(); c.arc(x,y,5,0,7); c.fill(); c.fillStyle='#58a6ff'; c.beginPath(); c.arc(x,y,3.5,0,7); c.fill(); });
+  const last=days[n-1]; c.fillStyle='#e6edf3'; c.textAlign='right'; c.font='11px Consolas,monospace'; c.fillText(`${last.avg.toFixed(0)}%`,xAt(n-1)-8,padT+ph-ph*last.avg/maxP-7);
+  c.textAlign='left'; c.fillStyle='#9fb0c0'; c.font='10px Consolas,monospace'; c.fillText(`${last.nWarn}구간`,xAt(n-1)+slot/2+4,padT+ph-ph*last.nWarn/maxN+4);
+  c.fillStyle='rgba(227,179,65,.8)'; c.fillRect(padL,2,10,6); c.fillStyle='#9fb0c0'; c.fillText('구간 수',padL+14,9); c.strokeStyle='#58a6ff'; c.beginPath(); c.moveTo(padL+70,5); c.lineTo(padL+82,5); c.stroke(); c.fillText('평균 %',padL+86,9);
+}
+
+// ---------- HUD 패널 ----------
+function updateHUDStatic(){ document.getElementById('fDate').textContent=`${fmtDate(day)} D${day}`; document.getElementById('fTide').textContent=`${fmtClock(tideMin(day)).slice(0,5)} · ${mulDae(day)}물`;
+  document.getElementById('fWx').textContent=`${today.weather.name} · ${today.weather.vis}`; document.getElementById('fWind').textContent=`${today.weather.wind} m/s ${today.weather.windDir} · ${today.temp} ℃`; }
+function setReadIdle(){ document.getElementById('rWhere').textContent='— 줄 · — 구간'; const p=document.getElementById('rCls'); p.textContent='대기'; p.className='pill etc';
+  document.getElementById('rPct').innerHTML='--<span style="font-size:14px;color:var(--ink2)"> %</span>'; document.getElementById('rPct').style.color=''; document.getElementById('rBar').style.width='0%';
+  ['rBG','rConf','rMem','rDelta','rSpray','rDose','rFrames','rAhead'].forEach(id=>document.getElementById(id).textContent='-'); document.getElementById('rNote').textContent=''; }
+function setRead(o){
+  const {i,j,m,memState,delta,spray,dose,mem,note,maintenance}=o;
+  document.getElementById('rWhere').textContent=`${i+1}번 줄 · ${j*CFG.segLen}~${(j+1)*CFG.segLen} m`;
+  const pill=document.getElementById('rCls'); pill.textContent=CLS[m.cls]+(m.nadir?' · 수직 확정':''); pill.className='pill '+m.cls;
+  document.getElementById('rPct').innerHTML=(m.cls==='bad'?'—':m.pct.toFixed(0))+'<span style="font-size:14px;color:var(--ink2)"> %</span>'; document.getElementById('rPct').style.color=COLOR[m.cls];
+  const bar=document.getElementById('rBar'); bar.style.width=m.pct+'%'; bar.style.background=COLOR[m.cls];
+  document.getElementById('rBG').textContent=(m.bg>=0?'+':'')+m.bg.toFixed(0);
+  document.getElementById('rFrames').textContent=`${m.frames} fr${m.nadir?' (수직 포함)':''}`;
+  document.getElementById('rConf').textContent=(m.conf*100).toFixed(0)+'%';
+  document.getElementById('rMem').textContent=memState;
+  document.getElementById('rDelta').innerHTML=delta===null?'-':(delta<=-0.5?`<span class="up">▼ ${Math.abs(delta).toFixed(0)}%p</span>`:delta>=0.5?`<span class="down">▲ ${delta.toFixed(0)}%p</span>`:'±0');
+  document.getElementById('rSpray').innerHTML=spray?`<span style="color:var(--cyan)">${maintenance?'유지 살포':'살포'}</span>`:(m.cls==='bad'?'<span class="down">대상 아님</span>':'불필요');
+  document.getElementById('rDose').textContent=spray?`${dose.toFixed(2)} L (×${(mem?mem.doseMul:1).toFixed(2)})`:'-';
+  document.getElementById('rNote').textContent=note;
+}
+function renderMemory(){
+  const act=[...memory.entries()].filter(([k,m])=>m.status==='active').map(([k,m])=>{const [i,j]=k.split('-').map(Number);return {i,j,m};}).sort((a,b)=>a.i-b.i||a.j-b.j);
+  const rec=[...memory.values()].filter(m=>m.status==='recovered').length; document.getElementById('memCount').textContent=`${act.length}개 · 복귀 ${rec}`;
+  const el=document.getElementById('memList'); if(!act.length){ el.innerHTML='<div style="color:var(--ink3)">추적 중인 황백화 구간이 없습니다.</div>'; return; }
+  el.innerHTML=act.slice(0,8).map(({i,j,m})=>{ const h=m.history.map(x=>`D${x.day} ${x.pct.toFixed(0)}%`).join(' → '); const last=m.history[m.history.length-1]; const todayDone=last&&last.day===day;
+    const trend=m.lastDelta===null||m.lastDelta===undefined?'':(m.lastDelta<0?`<span class="up">▼${Math.abs(m.lastDelta).toFixed(0)}</span>`:`<span class="down">▲${m.lastDelta.toFixed(0)}</span>`);
+    const eta=(last&&m.lastDelta<0)?`예상 복귀 ${Math.ceil(Math.max(0,last.pct-CFG.recover)/Math.max(2,-m.lastDelta))}일 후`:(last?'효과 측정 중':'');
+    return `<div class="memitem"><span class="where">${seglabel(i,j)} ${trend}</span><span class="pill ${todayDone?(last.dose>0?'cyan':'ok'):'warn'}">${todayDone?(last.dose>0?'오늘 살포':'오늘 관찰'):'재점검 대기'}</span><span class="hist">${h||'-'} · 배율 ×${m.doseMul.toFixed(2)}</span><span class="note">${eta}</span></div>`; }).join('')+(act.length>8?`<div style="color:var(--ink3);padding-top:6px">외 ${act.length-8}개 구간</div>`:'');
+}
+
+// ---------- 렌더링 (드론 1인칭 · 실사 지향) ----------
+const cv=document.getElementById('view'), ctx=cv.getContext('2d');
+let W=0,H=0,F=0, cosT=1, sinT=0;
+const appEl=document.getElementById('app'), uiEl=document.getElementById('ui'); let renderQ=1, slowN=0; const PIX_BUDGET=2.1e6; // 캔버스 픽셀 상한 (≈1920×1080)
+function resize(){ W=appEl.clientWidth||innerWidth; H=appEl.clientHeight||innerHeight;
+  const rs=Math.min(window.devicePixelRatio||1,Math.sqrt(PIX_BUDGET/(W*H)))*renderQ; const cw=Math.max(1,Math.round(W*rs)), ch=Math.max(1,Math.round(H*rs));
+  if(cv.width!==cw||cv.height!==ch){ cv.width=cw; cv.height=ch; } ctx.setTransform(cw/W,0,0,ch/H,0,0); F=H*0.62;
+  // 창이 작으면 패널·상단 버튼 전체를 비율대로 줄여 화면 밖으로 잘리지 않게 한다
+  const s=clamp(Math.min(W/1100,H/720),0.5,1); uiEl.style.width=(W/s)+'px'; uiEl.style.height=(H/s)+'px'; uiEl.style.transform=s<1?`scale(${s})`:''; }
+addEventListener('resize',resize); if(window.ResizeObserver) new ResizeObserver(resize).observe(appEl); resize();
+const cam={x:0,y:0,z:CFG.alt,yaw:0,pitch:CFG.pitchDeg}; const smooth={init:false,x:0,y:0,z:0,yaw:0,pitch:CFG.pitchDeg};
+function camPt(wx,wy,wz){ const dx=wx-cam.x,dy=wy-cam.y,dz=wz-cam.z; const c=Math.cos(cam.yaw),s=Math.sin(cam.yaw); const fx=dx*c-dy*s,fy=dx*s+dy*c; return {fx,up:fy*sinT+dz*cosT,depth:fy*cosT-dz*sinT}; }
+function project(wx,wy,wz){ const c=camPt(wx,wy,wz); if(c.depth<0.25) return null; return {x:W/2+F*c.fx/c.depth,y:H/2-F*c.up/c.depth,d:c.depth}; }
+function projectPoly(pts){ const NEAR=0.3, cs=pts.map(p=>camPt(p[0],p[1],p[2])); const out=[]; let clipped=false;
+  for(let n=0;n<cs.length;n++){ const a=cs[n],b=cs[(n+1)%cs.length]; const ain=a.depth>=NEAR,bin=b.depth>=NEAR; if(ain) out.push(a); else clipped=true;
+    if(ain!==bin){ const t=(NEAR-a.depth)/(b.depth-a.depth); out.push({fx:a.fx+(b.fx-a.fx)*t,up:a.up+(b.up-a.up)*t,depth:NEAR}); } }
+  if(out.length<3) return null; const sp=out.map(c=>({x:W/2+F*c.fx/c.depth,y:H/2-F*c.up/c.depth,d:c.depth})); sp.clipped=clipped; sp.dep=cs.reduce((x,c)=>x+c.depth,0)/cs.length;
+  // 화면 밖이면 버림
+  if(sp.every(p=>p.x<-W)||sp.every(p=>p.x>2*W)||sp.every(p=>p.y<-H)||sp.every(p=>p.y>2*H)) return null; return sp; }
+function trace(pts){ ctx.beginPath(); pts.forEach((p,n)=>n?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.closePath(); }
+function poly(pts,fill){ ctx.fillStyle=fill; trace(pts); ctx.fill(); }
+function fillPoly(pts,fill){ const P=projectPoly(pts); if(!P) return null; poly(P,fill); return P; }
+const mix=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+const HAZE=[200,202,206]; const rgb=c=>`rgb(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])})`;
+const fogK=()=>today.weather?today.weather.fogK:170;
+const fog=(c,dep,k)=>rgb(mix(c,HAZE,clamp(dep/(k||fogK()),0,0.85)));
+const fogA=dep=>clamp(dep/fogK(),0,0.85);
+
+// ---- 절차적 텍스처: 갯벌 타일 / 김발 ----
+function pnoise(x,y,per){ const xi=Math.floor(x),yi=Math.floor(y),fx=x-xi,fy=y-yi; const sx=fx*fx*(3-2*fx),sy=fy*fy*(3-2*fy); const h=(a,b)=>hash((((a%per)+per)%per)*57.3+(((b%per)+per)%per)*131.7+3.1);
+  return (h(xi,yi)*(1-sx)+h(xi+1,yi)*sx)*(1-sy)+(h(xi,yi+1)*(1-sx)+h(xi+1,yi+1)*sx)*sy; }
+let mudTile=null, mudPattern=null; const MUD_PX_PER_M=128;
+function makeMud(){ const S=512; mudTile=document.createElement('canvas'); mudTile.width=mudTile.height=S; const g=mudTile.getContext('2d'); const im=g.createImageData(S,S); const d=im.data;
+  for(let y=0;y<S;y++) for(let x=0;x<S;x++){ const n0=pnoise(x/128,y/128,4), n1=pnoise(x/64,y/64,8), n2=pnoise(x/18,y/18,28), n3=pnoise(x/6.4,y/6.4,80), n4=pnoise(x/2.3,y/2.3,222);
+    const rip=0.5+0.5*Math.sin(2*Math.PI*(2*x+1*y)/S+n1*5+n2*2); // 완만한 물결 결 (마른 곳에서 뚜렷)
+    const dry=clamp((n0-0.35)*2.2,0,1);
+    let c=mix([62,58,54],[104,94,80],dry); c=mix(c,[c[0]+22,c[1]+20,c[2]+16],rip*0.35*dry+0.1*rip); c=mix(c,[54,60,68],Math.pow(n2,2)*0.8*(1-dry)); c=mix(c,[118,110,98],Math.pow(n3,3)*0.35); c=mix(c,[40,38,36],Math.pow(1-n1,3)*0.6);
+    if(n2>0.86&&n1>0.55) c=mix(c,[128,138,150],0.55); // 작은 물웅덩이 반사
+    else if(n2>0.74&&n1>0.5) c=mix(c,[66,70,76],0.5); // 젖은 저지대
+    if(n3>0.86) c=mix(c,[40,38,34],0.5); // 갯벌 구멍·배설물 점
+    c=mix(c,[c[0]*1.25,c[1]*1.25,c[2]*1.25],(n4-0.5)*0.5); // 미세 입자
+    const k=(y*S+x)*4; d[k]=c[0]; d[k+1]=c[1]; d[k+2]=c[2]; d[k+3]=255; }
+  g.putImageData(im,0,0); mudPattern=ctx.createPattern(mudTile,'repeat'); }
+let landPattern=null;
+function makeLand(){ const S=512; const c=document.createElement('canvas'); c.width=c.height=S; const g=c.getContext('2d'); const im=g.createImageData(S,S); const d=im.data;
+  for(let y=0;y<S;y++) for(let x=0;x<S;x++){ const n0=pnoise(x/96,y/96,5.33), n1=pnoise(x/28,y/28,18.3), n2=pnoise(x/9,y/9,57), n3=pnoise(x/3,y/3,170);
+    let cc=mix([116,108,84],[92,96,62],clamp((n0-0.4)*2.5,0,1)); // 마른 풀 ↔ 염생식물
+    cc=mix(cc,[70,76,50],Math.pow(n1,2)*0.7); cc=mix(cc,[150,140,118],Math.pow(1-n1,4)*0.6*(n0>0.5?1:0.3)); // 풀 덤불 / 모래 자리
+    cc=mix(cc,[cc[0]*0.8,cc[1]*0.8,cc[2]*0.8],Math.pow(n2,3)*0.6); cc=mix(cc,[cc[0]*1.2,cc[1]*1.2,cc[2]*1.15],(n3-0.5)*0.5);
+    const k=(y*S+x)*4; d[k]=cc[0]; d[k+1]=cc[1]; d[k+2]=cc[2]; d[k+3]=255; }
+  g.putImageData(im,0,0); landPattern=ctx.createPattern(c,'repeat'); }
+const TEX_W=96, TEX_H=224;
+function bilin(cells,u,v){ const fx=clamp(u*CW-0.5,0,CW-1), fy=clamp(v*CL-0.5,0,CL-1); const x0=Math.floor(fx),y0=Math.floor(fy),x1=Math.min(CW-1,x0+1),y1=Math.min(CL-1,y0+1); const tx=fx-x0,ty=fy-y0;
+  return (cells[y0*CW+x0]*(1-tx)+cells[y0*CW+x1]*tx)*(1-ty)+(cells[y1*CW+x0]*(1-tx)+cells[y1*CW+x1]*tx)*ty; }
+let texBudget=3; // 프레임당 텍스처 생성 상한 (프레임 드롭 방지)
+function noriTexture(i,j){
+  const seg=segAt(i,j); const p=Math.round(seg.pct); if(seg.tex&&seg.tex.p===p) return seg.tex.c; if(texBudget<=0) return null; texBudget--;
+  const SW=TEX_W/2, SH=TEX_H/2; const small=document.createElement('canvas'); small.width=SW; small.height=SH; const sg=small.getContext('2d'); const im=sg.createImageData(SW,SH); const d=im.data; const cells=segCells(i,j);
+  // 황백화 반점 지도: 반점 면적 비율이 판독 %와 맞도록 분위수로 경계를 잡는다 → 나머지 면적은 정상 김 그대로
+  const NP=SW*SH, fld=new Float32Array(NP), pm=Math.max(1,seg.pct);
+  for(let yy=0;yy<SH;yy++) for(let xx=0;xx<SW;xx++) fld[yy*SW+xx]=0.35*Math.min(2.5,bilin(cells,xx/SW,yy/SH)/pm)+0.75*noise2(xx*0.085+i*13.1,yy*0.06+j*29.7)+0.7*noise2(xx*0.24+j*7.7,yy*0.17+i*4.3)+0.32*noise2(xx*0.7+i,yy*0.6+j);
+  const yFrac=clamp((seg.pct-3)/100,0,0.92), yThr= yFrac>0 ? fld.slice().sort()[Math.min(NP-1,Math.floor((1-yFrac)*NP))] : Infinity, sev=clamp((seg.pct-55)/45,0,1);
+  for(let yy=0;yy<SH;yy++) for(let xx=0;xx<SW;xx++){
+    const x=xx, y=yy; const u=xx/SW, v=yy/SH; const k=(yy*SW+xx)*4;
+    // 김 결: 그물 길이 방향으로 늘어진 가닥 + 큰 밀도 얼룩 + 미세 결
+    const dens=noise2(x*0.11+i*3.3,y*0.07+j*5.1), fiber=noise2(x*1.7+i*3.3,y*0.14+j*5.1), fiber2=noise2(x*3.4+j*1.7,y*0.5+i*0.9), fiber3=noise2(x*6+i,y*1.1+j*2), blotch=noise2(x*0.3+i*13.1,y*0.3+j*29.7);
+    let base=mix([14,6,18],[46,20,44],fiber*0.9); base=mix(base,[70,28,40],fiber2*0.25); base=mix(base,[28,12,32],(fiber3-0.5)*0.5);
+    base=mix(base,[58,44,34],Math.pow(1-dens,2.2)*0.55); // 밀도 낮은 곳은 갈색 기운 (김이 얇음)
+    const sheen=Math.pow(noise2(x*0.6+7.3,y*0.11+i*2.1+j*0.7),9)*(0.45+0.55*u); base=mix(base,[214,206,214],sheen*0.7); // 젖은 광택 (태양쪽 강하게)
+    const rim=Math.pow(1-Math.min(1,Math.min(u,1-u)*7),2); base=mix(base,[120,110,116],rim*0.35); // 가장자리 로프·끈 밝음
+    const ts=clamp((fld[yy*SW+xx]-yThr)/0.3+0.5,0,1); const t=ts*ts*(3-2*ts)*(0.7+0.3*blotch); // 부드러운 반점 가장자리 + 반점 안 농도 얼룩
+    const yel=mix([102,84,52],[170,146,100],noise2(x*0.25+j,y*0.25+i)); let col=mix(base,yel,t*0.68); // 황백화: 채도·밝기를 낮춰 김 바탕색이 살짝 비치게 (과하게 튀지 않도록)
+    if(sev>0) col=mix(col,[150,146,134],t*sev*0.45); // 심한 칸은 반점 안쪽에 그물·갯벌 비침
+    if(seg.type==='dropout'){ col=mix([104,98,88],[132,126,114],noise2(x*0.4,y*0.4)); if(noise2(x*0.5+9,y*0.5)>0.72) col=mix(col,[40,20,36],0.5); }
+    let a=255; const edge=Math.min(u,1-u); if(edge<0.09){ if(noise2(x*1.4+i,y*1.4+j)>edge/0.09+0.15) a=0; }
+    d[k]=col[0]; d[k+1]=col[1]; d[k+2]=col[2]; d[k+3]=a; }
+  sg.putImageData(im,0,0);
+  // 2배 업스케일 + 그물코 + 미세 입자
+  const c=document.createElement('canvas'); c.width=TEX_W; c.height=TEX_H; const g=c.getContext('2d'); g.imageSmoothingEnabled=true; g.drawImage(small,0,0,TEX_W,TEX_H);
+  const meshA= seg.type==='dropout'?0.6:clamp(p/150,0.04,0.3); g.strokeStyle=`rgba(${seg.type==='dropout'?'176,180,186':'150,150,152'},${meshA})`; g.lineWidth=1.2; g.beginPath();
+  for(let x=0;x<=TEX_W;x+=12){ g.moveTo(x+0.5,0); g.lineTo(x+0.5,TEX_H); } for(let y=0;y<=TEX_H;y+=12){ g.moveTo(0,y+0.5); g.lineTo(TEX_W,y+0.5); } g.stroke();
+  if(grain){ g.save(); g.globalCompositeOperation='overlay'; g.globalAlpha=0.35; g.drawImage(grain,0,0,TEX_W,TEX_H); g.restore(); }
+  // 원거리용 축소판 (평균화 → 반짝임 제거)
+  const far=document.createElement('canvas'); far.width=TEX_W; far.height=TEX_H; const fg=far.getContext('2d'); const tmp=document.createElement('canvas'); tmp.width=8; tmp.height=18; const tg=tmp.getContext('2d'); tg.drawImage(c,0,0,8,18); fg.imageSmoothingEnabled=true; fg.drawImage(tmp,0,0,TEX_W,TEX_H);
+  seg.tex={p,c,far}; return c; }
+function drawTexStrip(tex,P,sy0,sy1){ // P: 4점 (근좌, 근우, 원우, 원좌) · 텍스처 세로 구간 → 아핀 매핑 (클립은 구간 전체에서 한 번)
+  const ax=P[0].x,ay=P[0].y; const bx=P[1].x-ax,by=P[1].y-ay; const cx=((P[3].x-P[0].x)+(P[2].x-P[1].x))/2, cy=((P[3].y-P[0].y)+(P[2].y-P[1].y))/2; const sh=sy1-sy0;
+  ctx.save(); ctx.transform(bx/TEX_W,by/TEX_W,cx/sh,cy/sh,ax,ay); const ov=Math.min(2,sy0); ctx.drawImage(tex,0,sy0-ov,TEX_W,sh+ov+2,-0.6,-ov-0.6,TEX_W+1.2,sh+ov+2+1.2); ctx.restore(); }
+const SUN_BEARING=118*Math.PI/180;
+
+// 김 질감: 구간을 4×8 셀로 나눠 황백화 얼룩 분포 (평균 = seg.pct)
+const CW=4, CL=8;
+function segCells(i,j){ const seg=segAt(i,j); const p=seg.pct; if(seg.cells&&Math.abs(seg.cells.p-p)<0.01) return seg.cells.arr;
+  const arr=new Float32Array(CW*CL); let sum=0;
+  for(let a=0;a<CL;a++) for(let b=0;b<CW;b++){ const n=noise2(i*7.3+b*0.95+0.5,j*11.1+a*0.95+0.5), n2=noise2(i*3.1+b*2.3,j*5.7+a*2.3);
+    const v= p<=6 ? p*(0.3+1.4*n) : Math.max(0,p+(n-0.5)*p*1.7+(n2-0.5)*16); arr[a*CW+b]=v; sum+=v; }
+  const k=sum>0?p/(sum/(CW*CL)):1; for(let n=0;n<arr.length;n++) arr[n]=clamp(arr[n]*k,0,100); seg.cells={p,arr}; return arr; }
+const NORI_D=[26,12,34], NORI_M=[52,26,58], NORI_Y=[148,116,62], NORI_Y2=[180,154,102], NET_C=[132,140,148];
+function cellRGB(v,shade){ return mix(mix(NORI_D,NORI_M,shade),mix(NORI_Y,NORI_Y2,shade),clamp((v-3)/100,0,0.92)*0.8); } // 원거리 평균색: 정상 김과 황백화 반점의 면적 비율대로 섞음
+const netZ=u=>NET_Z-0.14*Math.sin(Math.PI*u);
+
+// 웅덩이 (결정적 배치)
+const PUDDLES=[]; { const r=mulberry32(99); for(let n=0;n<140;n++){ PUDDLES.push({x:-12+r()*82,y:-45+r()*220,rx:0.4+r()*1.7,ry:0.25+r()*0.9,rot:r()*Math.PI}); } }
+const GULLS=[{x:20,y:60,z:14,v:1.1,ph:0},{x:-10,y:120,z:18,v:0.8,ph:2},{x:50,y:10,z:11,v:1.4,ph:4}];
+makeMud();
+let grain=null; function makeGrain(){ grain=document.createElement('canvas'); grain.width=grain.height=256; const g=grain.getContext('2d'); const im=g.createImageData(256,256); for(let n=0;n<im.data.length;n+=4){ const v=128+(Math.random()-0.5)*90; im.data[n]=im.data[n+1]=im.data[n+2]=v; im.data[n+3]=255; } g.putImageData(im,0,0); } makeGrain();
+
+let lastT=performance.now();
+function render(now){
+  // 시뮬레이션 시간은 실제 경과 시간을 따른다 (프레임이 느린 PC에서도 1×가 실제 1배속 — 느린 화면 때문에 드론이 멈춘 듯 보이지 않게)
+  const rawMs=now-lastT; const dtReal=Math.min(1.0,rawMs/1000); lastT=now; const dt=dtReal*speedMul;
+  // 프레임이 계속 느리면 렌더 해상도를 단계적으로 낮춰 움직임을 우선한다 (질감 생성 중인 프레임은 제외)
+  if(rawMs<1000&&texBudget===3){ slowN= rawMs>50 ? slowN+1 : Math.max(0,slowN-2); if(slowN>20&&renderQ>0.5){ renderQ=Math.max(0.5,renderQ*0.8); slowN=0; resize(); } } const n=Math.max(1,Math.ceil(dt/0.05)); for(let s=0;s<n;s++) step(dt/n);
+  const gust=(today.weather?today.weather.shake:1)*(1+0.5*Math.sin(now/2700)*Math.sin(now/1100)); const sh=(running&&!today.done?1:0)*gust; const airborne=drone.alt>GROUND_ALT+0.3?1:0; const hover=drone.phase==='verify'?0.35:1;
+  // 짐벌·기체 추종 (급변 없이 부드럽게) — 시뮬레이션 시간 기준이라 배속과 무관하게 같은 거리만큼 지연
+  if(!smooth.init||Math.hypot(smooth.x-drone.x,smooth.y-drone.y)>25){ smooth.x=drone.x; smooth.y=drone.y; smooth.z=drone.alt; smooth.yaw=drone.yaw; smooth.pitch=drone.pitch; smooth.init=true; }
+  { const kp=1-Math.exp(-dt*10), ky=1-Math.exp(-dt*5), kpt=1-Math.exp(-dt*6);
+    smooth.x+=(drone.x-smooth.x)*kp; smooth.y+=(drone.y-smooth.y)*kp; smooth.z+=(drone.alt-smooth.z)*kp; smooth.yaw+=angleDiff(drone.yaw,smooth.yaw)*ky; smooth.pitch+=(drone.pitch-smooth.pitch)*kpt; }
+  cam.x=smooth.x+Math.sin(now/530)*0.05*sh*airborne*hover; cam.y=smooth.y; cam.z=smooth.z+Math.sin(now/410)*0.04*sh*airborne*hover; cam.yaw=smooth.yaw+Math.sin(now/700)*0.005*sh*airborne*hover; cam.pitch=smooth.pitch+Math.sin(now/610)*0.25*sh*airborne*hover;
+  const T=cam.pitch*Math.PI/180; cosT=Math.cos(T); sinT=Math.sin(T);
+  // 선회 시 뱅크: 기수 회전 속도에 비례
+  smooth.lastYaw=smooth.lastYaw===undefined?smooth.yaw:smooth.lastYaw; const yawRate=dt>0?angleDiff(smooth.yaw,smooth.lastYaw)/dt:0; smooth.lastYaw=smooth.yaw;
+  smooth.roll=(smooth.roll||0)+((clamp(yawRate,-1.5,1.5)*0.06)-(smooth.roll||0))*(1-Math.exp(-dt*4));
+  const roll=Math.sin(now/900)*0.004*sh*airborne+smooth.roll;
+  texBudget=3;
+  ctx.save(); ctx.translate(W/2,H/2); ctx.rotate(roll); ctx.translate(-W/2,-H/2);
+  const horizon= cam.pitch>84 ? -1e5 : H/2-F*Math.tan(T);
+  drawSky(horizon,now); drawGround(horizon); drawTerrainDetail(now); renderLandAndHub(); drawNets(now); drawGulls(now); renderSpray(dtReal);
+  ctx.restore();
+  postFX(now); renderHUDOverlay(now); renderMinimap(); updateHUDDynamic();
+  requestAnimationFrame(render);
+}
+let sunScreen=null, cloudPattern=null;
+function makeClouds(){ const S=512, Hh=256; const c=document.createElement('canvas'); c.width=S; c.height=Hh; const g=c.getContext('2d'); const im=g.createImageData(S,Hh); const d=im.data;
+  for(let y=0;y<Hh;y++) for(let x=0;x<S;x++){ let v=0,a=0.5,f=1; for(let o=0;o<4;o++){ v+=a*pnoise(x/S*8*f,y/Hh*4*f,8*f); a*=0.5; f*=2; } v=clamp((v-0.55)*2.6,0,1); const k=(y*S+x)*4; d[k]=250; d[k+1]=250; d[k+2]=252; d[k+3]=Math.round(v*170); }
+  g.putImageData(im,0,0); cloudPattern=ctx.createPattern(c,'repeat'); }
+function drawSky(horizon,now){
+  sunScreen=null; if(!cloudPattern) makeClouds();
+  if(horizon<-H) { return; }
+  const cl=today.weather?today.weather.cloud:0; const top=mix([74,88,112],[120,126,134],cl), mid=mix([143,155,171],[160,164,170],cl), low=mix([201,184,174],[178,178,180],cl), hz=mix([228,198,168],[196,194,192],cl);
+  let g=ctx.createLinearGradient(0,Math.min(0,horizon-H*0.9),0,horizon+30); g.addColorStop(0,rgb(top)); g.addColorStop(0.55,rgb(mid)); g.addColorStop(0.88,rgb(low)); g.addColorStop(1,rgb(hz));
+  ctx.fillStyle=g; ctx.fillRect(-W,-2*H,3*W,horizon+30+2*H);
+  // 구름 띠
+  if(cl>0.2){ for(let n=0;n<6;n++){ const yb=horizon-40-n*38-Math.sin(n*2.3)*14; const grd=ctx.createLinearGradient(0,yb-18,0,yb+18); grd.addColorStop(0,'rgba(255,255,255,0)'); grd.addColorStop(0.5,`rgba(235,236,238,${0.18*cl})`); grd.addColorStop(1,'rgba(255,255,255,0)'); ctx.fillStyle=grd; ctx.fillRect(-W,yb-18,3*W,36); } }
+  // 태양 (동남동, 저고도) + 글로우
+  let d=SUN_BEARING-cam.yaw; d=Math.atan2(Math.sin(d),Math.cos(d));
+  if(Math.abs(d)<1.2 && cl<0.9){ const sx=W/2+F*Math.tan(d), sy=horizon-34; const r=H*0.7; ctx.save(); ctx.globalCompositeOperation='screen'; const rg=ctx.createRadialGradient(sx,sy,2,sx,sy,r); rg.addColorStop(0,'rgba(255,240,210,1)'); rg.addColorStop(0.05,'rgba(255,220,170,.7)'); rg.addColorStop(0.25,'rgba(255,190,130,.22)'); rg.addColorStop(1,'rgba(255,170,120,0)'); ctx.fillStyle=rg; ctx.fillRect(sx-r,sy-r,2*r,2*r+40); ctx.restore(); sunScreen={x:sx,y:sy,vis:1-cl};
+    // 렌즈 플레어
+    [[0.35,16,'rgba(255,200,150,.10)'],[0.62,9,'rgba(200,230,255,.12)'],[0.95,26,'rgba(255,180,140,.08)']].forEach(([t,rr,c])=>{ const fx=sx+(W/2-sx)*2*t, fy=sy+(H/2-sy)*2*t; ctx.fillStyle=c; ctx.beginPath(); ctx.arc(fx,fy,rr,0,7); ctx.fill(); }); }
+  // 구름층 (방위에 따라 흐르는 패턴, 수평선 쪽으로 압축)
+  if(cloudPattern){ ctx.save(); const top=Math.max(-H,horizon-H*0.95); const ox=-(cam.yaw/(2*Math.PI))*2400+now*0.004; cloudPattern.setTransform(new DOMMatrix([1.6,0,0,1.0,ox,top])); ctx.fillStyle=cloudPattern; ctx.globalAlpha=0.55+0.35*cl; ctx.fillRect(-W,top,3*W,(horizon-top)*0.72);
+    cloudPattern.setTransform(new DOMMatrix([2.6,0,0,0.45,ox*1.3,horizon-(horizon-top)*0.3])); ctx.globalAlpha=0.35+0.3*cl; ctx.fillRect(-W,horizon-(horizon-top)*0.3,3*W,(horizon-top)*0.3); ctx.restore(); }
+  // 서쪽 구릉 실루엣 두 겹 (방위 195°~335°)
+  for(const [amp,colr,off,sc] of [[1.0,'rgba(136,146,160,.75)',0.9,3.1],[0.62,'rgba(104,112,126,.9)',0.0,4.2]]){
+    ctx.fillStyle=colr; ctx.beginPath(); let started=false;
+    for(let x=-20;x<=W+20;x+=6){ let b=cam.yaw+Math.atan((x-W/2)/F); b=((b%(2*Math.PI))+2*Math.PI)%(2*Math.PI); const deg=b*180/Math.PI; const win=clamp((deg-195)/25,0,1)*clamp((335-deg)/25,0,1);
+      const h=(8+40*noise2(b*sc+off,0.3)+14*noise2(b*13+off,2.1)+5*noise2(b*31,1))*win*amp; const y=horizon-h; if(!started){ ctx.moveTo(x,horizon+2); started=true; } ctx.lineTo(x,y); }
+    ctx.lineTo(W+20,horizon+2); ctx.closePath(); ctx.fill(); }
+  // 수평선 안개 띠
+  const hg=ctx.createLinearGradient(0,horizon-12,0,horizon+26); hg.addColorStop(0,'rgba(210,205,200,0)'); hg.addColorStop(0.5,'rgba(210,205,200,.55)'); hg.addColorStop(1,'rgba(210,205,200,0)'); ctx.fillStyle=hg; ctx.fillRect(-W,horizon-12,3*W,38);
+}
+// 지면 평면(z=planeZ)에 타일 패턴을 원근 스트립으로 깔기
+function drawPlanePattern(pattern,planeZ,horizon){
+  const top=Math.max(horizon,-H); const T=cam.pitch*Math.PI/180, c=Math.cos(cam.yaw), s=Math.sin(cam.yaw), alt=cam.z-planeZ; const yStart=H+8, yEnd=Math.max(top+6,-H);
+  for(let y=yStart; y>yEnd; ){ const k=(H/2-y)/F; const den=Math.sin(T)-k*Math.cos(T); if(den<=0.002) break; const fy=alt*(Math.cos(T)+k*Math.sin(T))/den; const D=fy*Math.cos(T)+alt*Math.sin(T); if(D>240) break;
+    const stripH=clamp(3+D*0.35,3,22); const ls=F/D/MUD_PX_PER_M, fs=F*alt/(D*D)/MUD_PX_PER_M;
+    const e=W/2+(F/D)*(-cam.x*c+cam.y*s), f=y+(F*alt/(D*D))*(cam.x*s+cam.y*c+fy);
+    pattern.setTransform(new DOMMatrix([ls*c,-fs*s,-ls*s,-fs*c,e,f])); ctx.fillStyle=pattern; ctx.fillRect(-W,y-stripH,3*W,stripH+1);
+    y-=stripH; }
+}
+function drawGround(horizon){
+  const top=Math.max(horizon,-H); ctx.fillStyle='#857d70'; ctx.fillRect(-W,top,3*W,H*2-top);
+  drawPlanePattern(mudPattern,0,horizon);
+  // 거리 안개 (대기 원근: 멀수록 푸르스름하게)
+  const hg=ctx.createLinearGradient(0,top,0,top+H*0.55); hg.addColorStop(0,'rgba(196,202,212,.88)'); hg.addColorStop(0.35,`rgba(196,202,212,${0.45*(170/fogK())})`); hg.addColorStop(1,'rgba(196,202,212,0)'); ctx.fillStyle=hg; ctx.fillRect(-W,top,3*W,H*0.55);
+  // 젖은 갯벌의 역광 반사 (태양 방향 아래로 길게 번지는 글레어)
+  if(sunScreen&&top>-H){ ctx.save(); ctx.globalCompositeOperation='screen'; const gx=sunScreen.x; const g=ctx.createRadialGradient(gx,top+10,4,gx,top+10,H*0.9); g.addColorStop(0,`rgba(255,226,190,${0.5*sunScreen.vis})`); g.addColorStop(0.18,`rgba(255,210,170,${0.22*sunScreen.vis})`); g.addColorStop(1,'rgba(255,200,160,0)');
+    ctx.translate(gx,top); ctx.scale(0.55,1.4); ctx.translate(-gx,-top); ctx.fillStyle=g; ctx.fillRect(gx-H,top,2*H,H); ctx.restore(); }
+}
+function drawTerrainDetail(now){
+  // 동쪽 바다 (물이 빠진 뒤 멀리 보이는 수면)
+  for(let y=-260;y<460;y+=120){ const P=projectPoly([[74,y,-0.05],[460,y,-0.05],[460,y+120,-0.05],[74,y+120,-0.05]]); if(P) poly(P,fog([150,165,176],P.dep,420)); }
+  // 갯골 (동쪽 큰 갯골, 서쪽 작은 갯골)
+  for(let y=-90;y<210;y+=5){ const xc=63+4*Math.sin(y/23)+2*Math.sin(y/7.1), xn=63+4*Math.sin((y+5)/23)+2*Math.sin((y+5)/7.1), w=2.2+0.8*Math.sin(y/13);
+    const P=projectPoly([[xc-w,y,-0.03],[xc+w,y,-0.03],[xn+w,y+5,-0.03],[xn-w,y+5,-0.03]]); if(P&&P.dep<140) poly(P,fog([172,184,194],P.dep));
+    const xw=-9+3*Math.sin(y/17), xwn=-9+3*Math.sin((y+5)/17); const Q=projectPoly([[xw-0.9,y,-0.03],[xw+0.9,y,-0.03],[xwn+0.9,y+5,-0.03],[xwn-0.9,y+5,-0.03]]); if(Q&&Q.dep<120) poly(Q,fog([165,178,190],Q.dep)); }
+  // 웅덩이 (하늘 반사)
+  for(const p of PUDDLES){ const c=camPt(p.x,p.y,0); if(c.depth<0.3||c.depth>95) continue; const pts=[]; for(let a=0;a<10;a++){ const t=a/10*2*Math.PI; const ex=Math.cos(t)*p.rx, ey=Math.sin(t)*p.ry; pts.push([p.x+ex*Math.cos(p.rot)-ey*Math.sin(p.rot),p.y+ex*Math.sin(p.rot)+ey*Math.cos(p.rot),-0.01]); }
+    const P=projectPoly(pts); if(!P) continue; const near=clamp(1-c.depth/40,0,1); const shimmer=(0.28+0.1*Math.sin(now/700+p.x))*(1-0.35*near);
+    poly(P,`rgba(188,198,212,${shimmer})`); if(c.depth<30){ ctx.strokeStyle=`rgba(40,38,34,${0.35*near})`; ctx.lineWidth=1; trace(P); ctx.stroke(); } }
+}
+function renderLandAndHub(){
+  const Z=LAND_Z; if(!landPattern) makeLand();
+  // 육상 평면: 텍스처를 원근 스트립으로 깔되 육지 다각형으로 클립
+  { ctx.save(); ctx.beginPath(); let any=false; for(let y=-90;y<230;y+=10){ const P=projectPoly([[-80,y,Z],[-16,y,Z],[-16,y+10,Z],[-80,y+10,Z]]); if(!P) continue; any=true; P.forEach((p,n)=>n?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.closePath(); }
+    if(any){ ctx.clip(); const hz= cam.pitch>84 ? -1e5 : H/2-F*Math.tan(cam.pitch*Math.PI/180); ctx.fillStyle='#6f6a56'; ctx.fillRect(-W,-H,3*W,3*H); drawPlanePattern(landPattern,Z,hz);
+      const hg=ctx.createLinearGradient(0,Math.max(hz,-H),0,Math.max(hz,-H)+H*0.5); hg.addColorStop(0,'rgba(196,202,212,.85)'); hg.addColorStop(1,'rgba(196,202,212,0)'); ctx.fillStyle=hg; ctx.fillRect(-W,Math.max(hz,-H),3*W,H*0.5); }
+    ctx.restore(); }
+  for(let y=-90;y<230;y+=10){ const c=camPt(-30,y+5,Z); if(c.depth<-20) continue;
+    fillPoly([[-14,y,0],[-14,y+10,0],[-14,y+10,Z],[-14,y,Z]],fog([78,74,66],c.depth)); // 제방 턱 (돌·콘크리트)
+    fillPoly([[-16,y,Z],[-14,y,Z],[-14,y+10,Z],[-16,y+10,Z]],fog([112,108,96],c.depth));
+    if(c.depth<90){
+      fillPoly([[-15.2,y,Z+0.01],[-14.3,y,Z+0.01],[-14.3,y+10,Z+0.01],[-15.2,y+10,Z+0.01]],fog([104,100,92],c.depth)); // 제방 윗길 (콘크리트)
+      fillPoly([[-14.4,y,Z+0.015],[-14.2,y,Z+0.015],[-14.2,y+10,Z+0.015],[-14.4,y+10,Z+0.015]],fog([126,122,112],c.depth)); } } // 턱 모서리
+  const P2=HUB.pad/2, z=Z+0.02;
+  const pad=fillPoly([[HUB.x-P2,HUB.y-P2,z],[HUB.x+P2,HUB.y-P2,z],[HUB.x+P2,HUB.y+P2,z],[HUB.x-P2,HUB.y+P2,z]],'#9aa0a6');
+  if(pad){ ctx.strokeStyle='#e3b341'; ctx.lineWidth=Math.max(1.5,30/pad.dep); ctx.stroke();
+    const bar=(x0,y0,x1,y1)=>fillPoly([[x0,y0,z+0.01],[x1,y0,z+0.01],[x1,y1,z+0.01],[x0,y1,z+0.01]],'#e3b341');
+    bar(HUB.x-0.9,HUB.y-1.1,HUB.x-0.6,HUB.y+1.1); bar(HUB.x+0.6,HUB.y-1.1,HUB.x+0.9,HUB.y+1.1); bar(HUB.x-0.6,HUB.y-0.15,HUB.x+0.6,HUB.y+0.15);
+    if(drone.phase==='charge'||drone.phase==='land'){ const a=0.45+0.45*Math.sin(performance.now()/200); fillPoly([[HUB.x-0.25,HUB.y-1.7,z+0.02],[HUB.x+0.25,HUB.y-1.7,z+0.02],[HUB.x+0.25,HUB.y-1.3,z+0.02],[HUB.x-0.25,HUB.y-1.3,z+0.02]],`rgba(57,208,216,${a})`); } }
+  const bx=HUB.x-6.5,by=HUB.y-2,bw=3.2,bd=4,bh=2.4; const V=[[bx,by,Z],[bx+bw,by,Z],[bx+bw,by+bd,Z],[bx,by+bd,Z],[bx,by,Z+bh],[bx+bw,by,Z+bh],[bx+bw,by+bd,Z+bh],[bx,by+bd,Z+bh]];
+  const faces=[[0,1,5,4,'#3b4652'],[1,2,6,5,'#2c343d'],[2,3,7,6,'#3b4652'],[3,0,4,7,'#2c343d'],[4,5,6,7,'#4a5663']];
+  faces.map(f=>({f,P:projectPoly([V[f[0]],V[f[1]],V[f[2]],V[f[3]]])})).filter(o=>o.P).sort((p,q)=>q.P.dep-p.P.dep).forEach(o=>poly(o.P,o.f[4]));
+  const top=projectPoly([V[4],V[5],V[6],V[7]]); if(top&&top.dep<60&&top.dep>1){ label(top.reduce((s,p)=>s+p.x,0)/top.length,top.reduce((s,p)=>s+p.y,0)/top.length-14,'간조스캔 충전 허브','#39d0d8'); }
+}
+function drawNets(now){
+  const items=[]; const shadowV=[-1.3,0.55]; const vk=drone.verify?key(drone.verify.i,drone.verify.j):null;
+  const NL=CFG.lines+DECOR;
+  for(let i=0;i<NL;i++){ const x0=lineX(i)-CFG.lineW/2,x1=lineX(i)+CFG.lineW/2;
+    for(let j=0;j<CFG.segs;j++){ const y0=j*CFG.segLen,y1=y0+CFG.segLen; const c=camPt(lineX(i),y0+2.5,NET_Z); if(c.depth<-3||c.depth>150) continue;
+      if(c.depth<70){ fillPoly([[x0+shadowV[0],y0+shadowV[1],0],[x1+shadowV[0],y0+shadowV[1],0],[x1+shadowV[0],y1+shadowV[1],0],[x0+shadowV[0],y1+shadowV[1],0]],`rgba(22,20,18,${0.3*(1-c.depth/80)})`); }
+      items.push({dep:c.depth,kind:'seg',i,j,x0,x1,y0,y1}); } }
+  // 지주 + 윗줄 로프
+  for(let i=0;i<NL;i++) for(let j=0;j<=CFG.segs;j++) for(const side of [-1,1]){ const px=lineX(i)+side*(CFG.lineW/2+0.12), py=j*CFG.segLen; const hsh=hash(i*131+j*17+side*7); const c=camPt(px,py,0.7); if(c.depth<0.3||c.depth>95) continue;
+    items.push({dep:c.depth-0.01,kind:'pole',x:px,y:py,lean:[(hsh-0.5)*0.3,(hash(hsh*99)-0.5)*0.3],h:1.35+hsh*0.25,i,j,side}); }
+  items.sort((a,b)=>b.dep-a.dep);
+  for(const it of items){ if(it.kind==='pole') drawPole(it); else drawSeg(it,now,vk); }
+}
+function drawPole(p){
+  const base=project(p.x,p.y,0), top=project(p.x+p.lean[0],p.y+p.lean[1],p.h); if(!base||!top) return;
+  // 그림자
+  const sh=project(p.x-1.3*p.h*0.9,p.y+0.55*p.h*0.9,0); if(sh&&p.dep<50){ ctx.strokeStyle='rgba(22,20,18,.28)'; ctx.lineWidth=Math.max(1,F*0.07/base.d); ctx.beginPath(); ctx.moveTo(base.x,base.y); ctx.lineTo(sh.x,sh.y); ctx.stroke(); }
+  ctx.strokeStyle=fog([54,46,40],p.dep); ctx.lineWidth=Math.max(0.8,F*0.045/base.d); ctx.lineCap='round'; ctx.beginPath(); ctx.moveTo(base.x,base.y); ctx.lineTo(top.x,top.y); ctx.stroke(); ctx.lineCap='butt';
+  if(p.dep<30){ ctx.strokeStyle=fog([120,112,104],p.dep); ctx.lineWidth=Math.max(0.5,F*0.012/base.d); ctx.beginPath(); ctx.moveTo(base.x-1,base.y); ctx.lineTo(top.x-1,top.y); ctx.stroke(); } // 하이라이트
+  // 윗줄 로프: 다음 지주 꼭대기로
+  if(p.j<CFG.segs){ const nh=1.35+hash(p.i*131+(p.j+1)*17+p.side*7)*0.25; const nx=p.x, ny=p.y+CFG.segLen; const nt=project(nx,ny,nh); if(nt&&p.dep<70){ ctx.strokeStyle=fog([44,38,32],p.dep); ctx.lineWidth=Math.max(0.8,F*0.02/base.d); ctx.beginPath(); ctx.moveTo(top.x,top.y); const mx=(top.x+nt.x)/2,my=(top.y+nt.y)/2+Math.max(1,F*0.08/base.d); ctx.quadraticCurveTo(mx,my,nt.x,nt.y); ctx.stroke(); } }
+  // 그물 매단 끈
+  if(p.dep<45){ const ne=project(p.x-p.side*0.12,p.y,NET_Z); if(ne){ ctx.strokeStyle=fog([70,66,60],p.dep); ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(top.x,top.y); ctx.lineTo(ne.x,ne.y); ctx.stroke(); } }
+}
+function drawSeg(q,now,vk){
+  const {i,j,x0,x1,y0,y1,dep}=q; const isDecor=i>=CFG.lines; const seg=segAt(i,j); const rec=isDecor?null:today.scans[i][j]; const cells=segCells(i,j); const k=key(i,j);
+  const outline=projectPoly([[x0,y0,netZ(0)],[x1,y0,netZ(0)],[x1,y1,netZ(1)],[x0,y1,netZ(1)]]); if(!outline) return;
+  if(dep>115){ // 원거리: 평균색 단일 폴리곤
+    let v=0; for(let n=0;n<cells.length;n++) v+=cells[n]; v/=cells.length; poly(outline, fog(seg.type==='dropout'?NET_C:cellRGB(v,0.5),dep)); }
+  else {
+    const ready=noriTexture(i,j); if(!ready){ let v=0; for(let n=0;n<cells.length;n++) v+=cells[n]; poly(outline,fog(seg.type==='dropout'?NET_C:cellRGB(v/cells.length,0.5),dep)); return; }
+    const tex= dep<26?seg.tex.c:seg.tex.far; const nS= dep<12?12:(dep<30?7:(dep<70?3:1));
+    // 구간 전체 외곽선으로 한 번만 클립 → 스트립 경계 이음새 없음 (원→근 순서로 덮어 그림)
+    ctx.save(); trace(outline); ctx.clip();
+    const strips=[]; for(let s=0;s<nS;s++){ const u0=s/nS,u1=(s+1)/nS; const ya=y0+(y1-y0)*u0, yb=y0+(y1-y0)*u1;
+      const P=projectPoly([[x0,ya,netZ(u0)],[x1,ya,netZ(u0)],[x1,yb,netZ(u1)],[x0,yb,netZ(u1)]]); if(!P) continue; strips.push({P,u0,u1}); }
+    strips.sort((a,b)=>b.P.dep-a.P.dep);
+    for(const st of strips){ const P=st.P; if(P.clipped||P.length!==4){ let v=0; for(let n=0;n<cells.length;n++) v+=cells[n]; poly(P,fog(cellRGB(v/cells.length,0.5),dep)); continue; } drawTexStrip(tex,P,st.u0*TEX_H,st.u1*TEX_H); }
+    ctx.restore();
+    // 거리 안개 + 살포 후 젖음
+    // 그물 곡면 음영: 양 가장자리 어둡게, 태양쪽(오른쪽) 가장자리는 살짝 밝게
+    if(dep<60&&outline.length===4){ const g=ctx.createLinearGradient(outline[0].x,outline[0].y,outline[1].x,outline[1].y); g.addColorStop(0,'rgba(0,0,0,.42)'); g.addColorStop(0.18,'rgba(0,0,0,.05)'); g.addColorStop(0.5,'rgba(255,245,230,.05)'); g.addColorStop(0.84,'rgba(0,0,0,.06)'); g.addColorStop(1,'rgba(0,0,0,.38)'); poly(outline,g); }
+    const fa=fogA(dep); if(fa>0.02){ poly(outline,`rgba(196,202,212,${fa})`); }
+    if(rec&&rec.dose>0){ poly(outline,'rgba(30,70,90,.22)'); }
+    // 가장자리 그림자 (그물 두께감)
+    if(dep<40){ ctx.strokeStyle='rgba(10,6,12,.45)'; ctx.lineWidth=Math.max(1,F*0.03/dep); trace(outline); ctx.stroke(); }
+  }
+  if(isDecor) return;
+  const cx=outline.reduce((s,p)=>s+p.x,0)/outline.length, cy=outline.reduce((s,p)=>s+p.y,0)/outline.length;
+  const m=memory.get(k);
+  if(vk===k){ const v=drone.verify; const col=v.stage==='spray'?COLOR.cyan:COLOR.orange; ctx.strokeStyle=col; ctx.lineWidth=3; trace(outline); ctx.stroke();
+    if(drone.spray){ const s=drone.spray; const frac=1-s.left/s.dose; ctx.fillStyle=`rgba(120,210,220,${0.22*frac})`; trace(outline); ctx.fill(); }
+    return; }
+  if(rec){ if(rec.cls!=='ok'||rec.dose>0){ ctx.strokeStyle=COLOR[rec.cls]; ctx.lineWidth=1.6; ctx.globalAlpha=0.85; trace(outline); ctx.stroke(); ctx.globalAlpha=1; if(dep<34) label(cx,cy-10,rec.cls==='bad'?'탈락 · 보고':`${rec.pct.toFixed(0)}% · 살포 ${rec.dose.toFixed(2)} L`,COLOR[rec.cls]); }
+    else if(dep<24){ ctx.strokeStyle='rgba(63,185,80,.35)'; ctx.lineWidth=0.8; trace(outline); ctx.stroke(); } }
+  else if(drone.obs&&drone.obs.key===k){ ctx.strokeStyle='#58a6ff'; ctx.lineWidth=1.6; trace(outline); ctx.stroke(); const n=drone.obs.samples.length; if(n>=3){ const med=median(drone.obs.samples); label(cx,cy-10,drone.obs.glare?`글레어 · 프레임 무효 ${n}fr`:(med<0?`탈락? ${n}fr`:`판독 중 ${med.toFixed(0)}% · ${n}fr`),'#58a6ff'); } }
+  else if(drone.pending.has(k)&&dep<40){ const o=drone.pending.get(k); ctx.setLineDash([4,3]); ctx.strokeStyle=COLOR.orange; ctx.lineWidth=1.6; trace(outline); ctx.stroke(); ctx.setLineDash([]); label(cx,cy-10,`정지 예정 · ${o.reasons[0]}`,COLOR.orange); }
+  else if(m&&m.status==='active'&&dep<60){ ctx.setLineDash([5,4]); ctx.strokeStyle=COLOR.cyan; ctx.lineWidth=1.4; trace(outline); ctx.stroke(); ctx.setLineDash([]); if(dep<35){ const last=m.history[m.history.length-1]; label(cx,cy-10,`기억 D${last?last.day:'-'} ${last?last.pct.toFixed(0)+'%':''} · 정지 재점검`,COLOR.cyan); } }
+}
+function drawGulls(now){
+  for(const g of GULLS){ const t=now/1000*g.v; const wx=g.x+Math.sin(t*0.15+g.ph)*40, wy=g.y+t*1.5%200-100, wz=g.z+Math.sin(t*0.4)*1.5; const p=project(wx,wy,wz); if(!p||p.d>140) continue;
+    const s=Math.max(2,F*0.5/p.d), flap=Math.sin(now/140+g.ph)*0.6; ctx.strokeStyle='rgba(60,62,70,.85)'; ctx.lineWidth=Math.max(1,s*0.12); ctx.beginPath(); ctx.moveTo(p.x-s,p.y+s*flap); ctx.quadraticCurveTo(p.x-s*0.4,p.y-s*0.3,p.x,p.y); ctx.quadraticCurveTo(p.x+s*0.4,p.y-s*0.3,p.x+s,p.y+s*flap); ctx.stroke(); }
+}
+function label(x,y,text,color){ ctx.font='bold 11px Consolas,monospace'; const w=ctx.measureText(text).width+10; ctx.fillStyle='rgba(5,8,12,.75)'; ctx.beginPath(); ctx.roundRect(x-w/2,y-9,w,16,4); ctx.fill(); ctx.fillStyle=color; ctx.textAlign='center'; ctx.fillText(text,x,y+3); ctx.textAlign='left'; }
+
+function renderSpray(dt){
+  const s=drone.spray; const spraying=s&&running&&drone.phase==='verify';
+  // 기체 하부 중앙 노즐 (카메라 화각 밖) → 그 칸의 김 전체에 고르게 낙하. 입자는 월드 좌표로 노즐→그물 위 착지점까지 이동
+  if(spraying){ const x0=lineX(s.i)-CFG.lineW/2, y0=s.j*CFG.segLen; const cnt=Math.max(1,Math.round(1500*dt));
+    for(let n=0;n<cnt;n++){ const u=Math.random(), life=0.45+Math.random()*0.35;
+      particles.push({sx:cam.x,sy:cam.y,sz:cam.z-0.45,tx:x0+Math.random()*CFG.lineW,ty:y0+u*CFG.segLen,tz:netZ(u)+0.02,life,T:life}); } }
+  ctx.globalCompositeOperation='screen';
+  if(spraying){ ctx.save(); ctx.translate(W/2,H/2); ctx.scale(0.5,1); const g=ctx.createRadialGradient(0,0,10,0,0,H*0.48); g.addColorStop(0,'rgba(190,235,240,.15)'); g.addColorStop(1,'rgba(190,235,240,0)'); ctx.fillStyle=g; ctx.fillRect(-H,-H/2,2*H,H); ctx.restore(); }
+  ctx.globalCompositeOperation='source-over'; ctx.lineCap='round';
+  const alive=[]; const ease=k=>1-Math.pow(1-k,1.5);
+  for(const p of particles){ p.life-=dt;
+    if(p.life<=0){ if(!p.hit&&Math.random()<0.45) alive.push({hit:true,tx:p.tx,ty:p.ty,tz:p.tz,life:0.32,T:0.32}); continue; } // 착지 → 그물 위 물방울 튐
+    alive.push(p);
+    if(p.hit){ const q=project(p.tx,p.ty,p.tz); if(!q) continue; const a=p.life/p.T; ctx.strokeStyle=`rgba(226,246,250,${0.6*a})`; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(q.x,q.y,clamp(0.03*F/q.d,1.5,7)*(1.25-a),0,7); ctx.stroke(); continue; }
+    // 물줄기: 중앙(기체 하부)에서 착지점으로 뻗는 짧은 궤적선 → 뿌려지는 방향이 보인다
+    const k=1-p.life/p.T, e=ease(k), e0=ease(Math.max(0,k-0.09));
+    const q=project(p.sx+(p.tx-p.sx)*e,p.sy+(p.ty-p.sy)*e,p.sz+(p.tz-p.sz)*e), q0=project(p.sx+(p.tx-p.sx)*e0,p.sy+(p.ty-p.sy)*e0,p.sz+(p.tz-p.sz)*e0); if(!q||!q0) continue;
+    const a=0.52*clamp(k*6,0,1)*clamp((1-k)*4,0,1)*clamp(q.d/2.2,0.35,1); // 렌즈 바로 아래에서는 옅게 (노즐은 보이지 않음)
+    ctx.strokeStyle=`rgba(228,247,251,${a})`; ctx.lineWidth=clamp(0.009*F/q.d,0.8,2.2); ctx.beginPath(); ctx.moveTo(q0.x,q0.y); ctx.lineTo(q.x,q.y); ctx.stroke(); }
+  particles=alive; ctx.lineCap='butt';
+}
+function postFX(now){
+  // 컬러 그레이딩: 자기 자신을 overlay로 겹쳐 대비·채도 보강 + 태양쪽 따뜻, 반대쪽 차갑게
+  ctx.save(); ctx.globalCompositeOperation='overlay'; ctx.globalAlpha=0.22; ctx.drawImage(cv,0,0,cv.width,cv.height,0,0,W,H); ctx.restore();
+  ctx.save(); ctx.globalCompositeOperation='soft-light'; const sx=sunScreen?sunScreen.x:W*0.8; const cg=ctx.createLinearGradient(Math.max(0,Math.min(W,sx)),0,W-Math.max(0,Math.min(W,sx)),H); cg.addColorStop(0,'rgba(255,196,140,.45)'); cg.addColorStop(1,'rgba(70,110,170,.45)'); ctx.fillStyle=cg; ctx.fillRect(0,0,W,H); ctx.restore();
+  const vg=ctx.createRadialGradient(W/2,H/2,H*0.45,W/2,H/2,H*1.0); vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,.42)'); ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+  ctx.save(); ctx.globalAlpha=0.04; ctx.globalCompositeOperation='overlay'; const ox=(now*0.37)%256, oy=(now*0.23)%256; for(let y=-oy;y<H;y+=256) for(let x=-ox;x<W;x+=256) ctx.drawImage(grain,x,y); ctx.restore();
+}
+function renderHUDOverlay(now){
+  const cx=W/2,cy=H/2; const bw=Math.min(260,W*0.22),bh=bw*0.62; const inFarm=['fly','turn','verify','backtrack'].includes(drone.phase)&&!today.done;
+  ctx.font='11px Consolas,monospace'; ctx.textAlign='left';
+  if(inFarm){
+    // 카메라 정보 (DJI 풍)
+    const tc=fmtClock(0,today.flightSec).slice(3); const gim=Math.round(cam.pitch);
+    const recTxt=`REC ${tc}   4K/30p   1/1000 s   ISO 200   WB 5600K   짐벌 −${gim}°   RTK FIX · SAT 21`; ctx.fillStyle='rgba(255,255,255,.85)'; ctx.textAlign='center'; ctx.fillText(recTxt,cx+6,143);
+    if(Math.sin(now/400)>0){ ctx.fillStyle='#f85149'; ctx.beginPath(); ctx.arc(cx-ctx.measureText(recTxt).width/2-4,139,3.5,0,7); ctx.fill(); }
+    ctx.textAlign='left';
+    if(drone.phase==='verify'){
+      const v=drone.verify; const stageTxt={tilt:'정지 · 카메라 수직 전환',vote:`수직 재투표 ${v.nadir.length} fr${v.nadir.length>=3?` · 중앙값 ${(()=>{const m=median(v.nadir);return m<0?'탈락':m.toFixed(0)+'%'})()}`:''}`,refill:'탱크 보충 중',spray:`살포 중 ${drone.spray?((1-drone.spray.left/drone.spray.dose)*100).toFixed(0):0}% · ${drone.spray?drone.spray.dose.toFixed(2):''} L`,untilt:'완료 · 카메라 복귀 · 재출발'}[v.stage];
+      const col= v.stage==='spray'?COLOR.cyan:COLOR.orange; ctx.font='bold 14px Consolas,monospace'; ctx.textAlign='center'; const t1=`■ ${seglabel(v.i,v.j)} · ${stageTxt}`; const w1=ctx.measureText(t1).width+24;
+      ctx.fillStyle='rgba(5,8,12,.78)'; ctx.beginPath(); ctx.roundRect(cx-w1/2,158,w1,26,6); ctx.fill(); ctx.fillStyle=col; ctx.fillText(t1,cx,176);
+      ctx.font='11px Consolas,monospace'; ctx.fillStyle='rgba(255,255,255,.8)'; ctx.fillText(`사유: ${(v.obs.reasons||[]).join(' · ')}`,cx,196); ctx.textAlign='left';
+      // 수직 뷰 격자
+      ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(cx-bw,cy); ctx.lineTo(cx+bw,cy); ctx.moveTo(cx,cy-bh); ctx.lineTo(cx,cy+bh); ctx.stroke();
+    } else {
+      const col=drone.obs?'rgba(88,166,255,.9)':'rgba(255,255,255,.8)'; ctx.strokeStyle=col; ctx.lineWidth=2; const L2=22;
+      [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(([sx,sy])=>{ const x=cx+sx*bw/2,y=cy+sy*bh/2; ctx.beginPath(); ctx.moveTo(x,y+sy*-L2); ctx.lineTo(x,y); ctx.lineTo(x+sx*-L2,y); ctx.stroke(); });
+      if(running){ const t=(now/900)%1; const y=cy-bh/2+bh*t; ctx.strokeStyle='rgba(88,166,255,.45)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(cx-bw/2+6,y); ctx.lineTo(cx+bw/2-6,y); ctx.stroke(); }
+      ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(cx-10,cy); ctx.lineTo(cx+10,cy); ctx.moveTo(cx,cy-10); ctx.lineTo(cx,cy+10); ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,.78)'; ctx.fillText(drone.phase==='backtrack'?'◀ 미판독 구간으로 복귀 중':'선행 카메라 · 7 m 앞 · RGB 30 fps 투표 · 회색 기준판 보정',cx-bw/2,cy-bh/2-10);
+      ctx.textAlign='right'; ctx.fillText(`AI 판독 ${running?'ON':'STANDBY'}`,cx+bw/2,cy+bh/2+16); ctx.textAlign='left';
+    }
+    // 방위 테이프
+    const hdg=((drone.yaw*180/Math.PI)%360+360)%360; ctx.fillStyle='rgba(255,255,255,.7)'; ctx.font='11px Consolas,monospace'; ctx.textAlign='center';
+    ctx.fillStyle='rgba(5,8,12,.45)'; ctx.fillRect(cx-210,104,420,44); ctx.fillStyle='rgba(255,255,255,.7)';
+    for(let d=-60;d<=60;d+=15){ const h=((hdg+d)%360+360)%360; const x=cx+d*3.2; ctx.fillRect(x,108,1,h%45===0?8:4); if(h%45===0) ctx.fillText(h===0?'N':h===90?'E':h===180?'S':h===270?'W':String(h),x,128); }
+    ctx.fillStyle=COLOR.warn; ctx.fillRect(cx-1,104,2,14); ctx.textAlign='left';
+  }
+  const t=document.getElementById('toast'); const show=(h)=>{ t.style.display='block'; t.innerHTML=h; };
+  if(!running&&!today.done) show(`대기 중<small>▶ 비행 시작 (스페이스바)</small>`);
+  else if(drone.phase==='takeoff') show(`충전 허브 이륙 · 고도 ${drone.alt.toFixed(1)} m<small>${fmtDate(day)} 간조 ${fmtClock(tideMin(day)).slice(0,5)} · 어장으로 이동</small>`);
+  else if(drone.phase==='transit') show(`어장 진입 중 · 1번 줄까지 ${Math.hypot(lineX(0)-drone.x,-10-drone.y).toFixed(0)} m<small>오늘 재점검 대상 ${activeCount()}구간이 메모리에 있음</small>`);
+  else if(drone.phase==='return') show(`전수 확정 완료 · 충전 허브로 복귀 ${Math.hypot(HUB.x-drone.x,HUB.y-drone.y).toFixed(0)} m<small>배터리 ${drone.bat.toFixed(0)}% · 잔여 영양제 ${drone.tank.toFixed(1)} L</small>`);
+  else if(drone.phase==='land') show(`착륙 중 · 고도 ${drone.alt.toFixed(1)} m<small>패드 정렬 · 충전 접점 연결 준비</small>`);
+  else if(drone.phase==='charge') show(`충전 중 ⚡ ${drone.bat.toFixed(0)}% · 영양제 ${drone.tank.toFixed(1)}/${CFG.tank} L<small>충전이 끝나면 어민 브리핑을 전송합니다</small>`);
+  else if(drone.phase==='turn') show(`선회 → ${drone.line+2}번 줄 진입<small>지그재그 경로 · 다음 줄 기억 구간 ${[...memory.entries()].filter(([k,m])=>m.status==='active'&&+k.split('-')[0]===drone.line+1).length}개</small>`);
+  else if(drone.phase==='backtrack') show(`◀ 되돌아가는 중 · ${seglabel(drone.line,drone.backTarget)}<small>선행 판독 누락 → 상공 정지 · 수직 재판독</small>`);
+  else if(today.done) show(`충전 완료 · 허브 대기<small>브리핑 버튼으로 결과 확인 · 다음 날 ▸ 로 재점검 비행</small>`);
+  else t.style.display='none';
+}
+const mm=document.getElementById('minimap'), mctx=mm.getContext('2d');
+function renderMinimap(){
+  const dpr=window.devicePixelRatio||1; const w=mm.clientWidth,h=mm.clientHeight; if(mm.width!==w*dpr){ mm.width=w*dpr; mm.height=h*dpr; } mctx.setTransform(dpr,0,0,dpr,0,0); mctx.clearRect(0,0,w,h);
+  const padL=22,padR=8,padT=6,padB=6; const rowH=(h-padT-padB)/CFG.lines; const segW=(w-padL-padR)/CFG.segs; mctx.font='9px Consolas,monospace';
+  for(let i=0;i<CFG.lines;i++){ const y=padT+i*rowH; mctx.fillStyle=i===drone.line&&!today.done?'rgba(255,255,255,.08)':'transparent'; mctx.fillRect(0,y,w,rowH); mctx.fillStyle='#6b7a89'; mctx.fillText(`${i+1}`,6,y+rowH*0.72);
+    for(let j=0;j<CFG.segs;j++){ const r=today.scans[i][j]; const m=memory.get(key(i,j)); const x=padL+j*segW; let col='rgba(255,255,255,.08)'; if(r) col=r.cls==='ok'?(r.dose>0?'rgba(57,208,216,.6)':'rgba(63,185,80,.55)'):COLOR[r.cls];
+      mctx.fillStyle=col; mctx.fillRect(x+0.5,y+2,segW-1,rowH-4);
+      if(drone.pending.has(key(i,j))){ mctx.strokeStyle=COLOR.orange; mctx.lineWidth=1; mctx.strokeRect(x+0.5,y+1.5,segW-1,rowH-3); }
+      else if(m&&m.status==='active'){ mctx.strokeStyle=COLOR.cyan; mctx.lineWidth=1; mctx.strokeRect(x+0.5,y+1.5,segW-1,rowH-3); } } }
+  const dx=padL+clamp(drone.y/L,-0.08,1.08)*(w-padL-padR); const dyLine=(drone.phase==='turn')?drone.line+clamp(drone.t,0,1):drone.line; const dy=padT+(dyLine+0.5)*rowH;
+  mctx.fillStyle=drone.phase==='verify'?COLOR.orange:'#fff'; mctx.beginPath(); const a=Math.PI/2-drone.yaw; mctx.moveTo(dx+Math.cos(a)*6,dy-Math.sin(a)*6); mctx.lineTo(dx+Math.cos(a+2.5)*5,dy-Math.sin(a+2.5)*5); mctx.lineTo(dx+Math.cos(a-2.5)*5,dy-Math.sin(a-2.5)*5); mctx.closePath(); mctx.fill();
+}
+function updateHUDDynamic(){
+  const scanned=today.nScan,total=CFG.lines*CFG.segs;
+  const phaseTxt={takeoff:'이륙',transit:'어장 진입',return:'허브 복귀',land:'착륙',charge:'충전',verify:'정지 확인',backtrack:'복귀 재판독'}[drone.phase];
+  document.getElementById('progText').innerHTML= today.done?`D${day} 비행 완료 · <b>${scanned}/${total}</b> 구간 · 황백화 <b>${countCls('warn')}</b> · 살포 <b>${today.volume.toFixed(1)} L</b>`:`D${day} · ${phaseTxt||`${drone.line+1}번 줄 ${drone.dir>0?'→':'←'}`} · 확정 <b>${scanned}/${total}</b> · 황백화 <b>${countCls('warn')}</b> · 정지 확인 <b>${today.verifies}</b> · 살포 <b>${today.volume.toFixed(1)} L</b>`;
+  document.getElementById('progBar').style.width=(scanned/total*100)+'%';
+  document.getElementById('fClock').textContent=fmtClock(tideMin(day),today.flightSec);
+  const remain=Math.max(0,CFG.windowMin*60-today.flightSec); const tide=(-0.6+0.9*(today.flightSec/(CFG.windowMin*60))).toFixed(1); document.getElementById('fWindow').textContent=`${tide} m · ${pad2(Math.floor(remain/60))}:${pad2(Math.floor(remain%60))}`;
+  const lat=BASE_LAT+drone.y/111320, lon=BASE_LON+drone.x/(111320*Math.cos(BASE_LAT*Math.PI/180)); document.getElementById('fGps').textContent=`${lat.toFixed(5)}N ${lon.toFixed(5)}E`;
+  document.getElementById('fAlt').textContent=`${drone.alt.toFixed(1)} m · −${Math.round(cam.pitch)}°`;
+  document.getElementById('fSpd').textContent=`${(running&&!today.done?curSpeed():0).toFixed(1)} m/s`;
+  document.getElementById('fHdg').textContent=`${String(Math.round(((drone.yaw*180/Math.PI)%360+360)%360)).padStart(3,'0')}°`;
+  document.getElementById('fBat').textContent=`${drone.bat.toFixed(0)}%`; document.getElementById('fTank').textContent=`${drone.tank.toFixed(1)} L`; document.getElementById('tankBar').style.width=(drone.tank/CFG.tank*100)+'%';
+  const o=drone.obs, ah=document.getElementById('rAhead');
+  if(o&&o.samples.length){ const med=median(o.samples); ah.innerHTML=`${seglabel(o.i,o.j)} · <b style="color:var(--etc)">${o.samples.length} fr</b> · 예비 ${o.glare?'<span style="color:var(--orange)">글레어</span>':(med<0?'탈락?':med.toFixed(0)+'%')}`; }
+  else if(drone.pending.size){ const p=[...drone.pending.values()][0]; ah.innerHTML=`<span style="color:var(--orange)">정지 예정</span> ${seglabel(p.i,p.j)} · ${p.reasons[0]}`; }
+  else if(drone.phase==='verify'){ const v=drone.verify; ah.innerHTML=`<span style="color:var(--orange)">정지 중</span> ${seglabel(v.i,v.j)} · ${v.stage==='vote'?`수직 ${v.nadir.length} fr`:v.stage}`; }
+  else ah.textContent=drone.phase==='fly'?'구간 사이':'-';
+}
+function countCls(c){ let n=0; for(const row of today.scans) for(const r of row) if(r&&r.cls===c) n++; return n; }
+
+// ---------- 컨트롤 ----------
+document.getElementById('btnPlay').onclick=()=>{ if(today.done) nextDay(); running=!running; document.getElementById('btnPlay').textContent=running?'❚❚ 일시정지':'▶ 비행 시작'; };
+document.querySelectorAll('#speedSeg button').forEach(b=>b.onclick=()=>{ speedMul=+b.dataset.s; document.querySelectorAll('#speedSeg button').forEach(x=>x.classList.toggle('on',x===b)); });
+document.getElementById('thr').oninput=e=>{ threshold=+e.target.value; document.getElementById('thrV').textContent=threshold+'%'; };
+document.getElementById('autoNext').onchange=e=>autoNext=e.target.checked;
+document.getElementById('btnBrief').onclick=()=>showBriefing(days.length-1);
+document.getElementById('btnNext').onclick=()=>{ nextDay(); running=true; document.getElementById('btnPlay').textContent='❚❚ 일시정지'; };
+document.getElementById('btnReset').onclick=()=>{ seedBase+=1; resetAll(); hideModal(); };
+// 전체화면: 시작 버튼을 누르면 자동 전환, 상단 버튼·F 키로 켜고 끔
+const fsOn=()=>!!(document.fullscreenElement||document.webkitFullscreenElement);
+function goFull(on){ const el=document.documentElement; try{ if(on&&!fsOn()){ const p=(el.requestFullscreen||el.webkitRequestFullscreen).call(el); if(p&&p.catch) p.catch(()=>{}); } else if(!on&&fsOn()){ (document.exitFullscreen||document.webkitExitFullscreen).call(document); } }catch(e){} }
+document.getElementById('btnFull').onclick=()=>goFull(!fsOn());
+for(const ev of ['fullscreenchange','webkitfullscreenchange']) document.addEventListener(ev,()=>{ document.getElementById('btnFull').textContent=fsOn()?'전체화면 해제':'전체화면'; resize(); });
+document.getElementById('btnIntro').onclick=()=>{ document.getElementById('intro').style.display='none'; running=true; lastT=performance.now(); document.getElementById('btnPlay').textContent='❚❚ 일시정지'; goFull(true); };
+addEventListener('keydown',e=>{ if(e.code==='KeyF'&&!e.ctrlKey&&!e.metaKey&&!e.altKey){ goFull(!fsOn()); return; } if(e.code==='Space'&&document.getElementById('intro').style.display==='none'&&!document.getElementById('modal').classList.contains('show')){ e.preventDefault(); document.getElementById('btnPlay').click(); } });
+
+resetAll();
+requestAnimationFrame(t=>{lastT=t; render(t);});
+</script>
+</body>
+</html>
